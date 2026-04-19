@@ -1816,10 +1816,23 @@ async def put_ui_prefs(body: dict):
 # hardcodes, so a pre-existing deployment that's never PUT to this
 # endpoint gets identical rendering on upgrade.
 
+# Each kind lists EVERY metric key its card view emits, in canonical
+# display order. The app's read-through iterates `metrics_order` and
+# renders matching sections; anything missing here was being silently
+# hidden after 17-rc1 wired strict filtering, which produced empty
+# cards for every existing deployment that had never PUT to this
+# endpoint. Keep these lists in sync with the *Card.swift view
+# switches (BR1Card, UDMCard, Balance310Card, PingCard).
 _APPEARANCE_DEFAULTS: dict = {
     "peplink_router": {
-        "metrics_visible": ["status", "uptime", "cpu", "memory", "wan_rows"],
-        "metrics_order":   ["status", "uptime", "cpu", "memory", "wan_rows"],
+        "metrics_visible": [
+            "status", "uptime", "host", "wan_rows",
+            "cellular", "speedfusion", "gps",
+        ],
+        "metrics_order": [
+            "status", "uptime", "host", "wan_rows",
+            "cellular", "speedfusion", "gps",
+        ],
         "wan_row_metrics": ["latency", "jitter", "loss", "throughput", "signal"],
         "color_thresholds": {
             "latency_ms":   [100, 500],
@@ -1829,30 +1842,50 @@ _APPEARANCE_DEFAULTS: dict = {
         },
     },
     "unifi_network": {
-        "metrics_visible": ["status", "uptime", "cpu", "memory", "wan_rows"],
-        "metrics_order":   ["status", "uptime", "cpu", "memory", "wan_rows"],
+        "metrics_visible": [
+            "status", "uptime", "host", "cpu", "memory",
+            "client_count", "wan_rows",
+        ],
+        "metrics_order": [
+            "status", "uptime", "host", "cpu", "memory",
+            "client_count", "wan_rows",
+        ],
         "wan_row_metrics": ["latency", "throughput"],
         "color_thresholds": {
-            "latency_ms": [100, 500],
-            "loss_pct":   [1, 5],
+            "latency_ms":    [100, 500],
+            "loss_pct":      [1, 5],
+            "cpu_pct":       [70, 90],
+            "memory_pct":    [70, 90],
         },
     },
     "peplink_derived": {
-        "metrics_visible": ["status", "wan_rows"],
-        "metrics_order":   ["status", "wan_rows"],
+        "metrics_visible": [
+            "status", "uptime", "host", "speedfusion", "bonded_throughput",
+        ],
+        "metrics_order": [
+            "status", "uptime", "host", "speedfusion", "bonded_throughput",
+        ],
         "wan_row_metrics": ["latency", "loss"],
         "color_thresholds": {
-            "latency_ms": [100, 500],
-            "loss_pct":   [1, 5],
+            "latency_ms":           [100, 500],
+            "loss_pct":             [1, 5],
+            "jitter_ms":            [10, 50],
+            "throughput_up_mbps":   [5, 1],
+            "throughput_down_mbps": [5, 1],
         },
     },
     "icmp_ping": {
-        "metrics_visible": ["targets"],
-        "metrics_order":   ["targets"],
+        "metrics_visible": [
+            "status", "latency", "jitter", "loss", "sparkline",
+        ],
+        "metrics_order": [
+            "status", "latency", "jitter", "loss", "sparkline",
+        ],
         "wan_row_metrics": ["latency", "loss"],
         "color_thresholds": {
             "latency_ms": [100, 500],
             "loss_pct":   [1, 5],
+            "jitter_ms":  [10, 50],
         },
     },
 }
