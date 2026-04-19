@@ -164,6 +164,63 @@ async def get_state():
     })
 
 
+@app.get("/api/devices")
+async def list_devices():
+    """Enumerate the devices the server is configured to poll.
+
+    The iPhone app uses this during its first-launch setup and to render
+    the dashboard's device list without hardcoding names. Returns one
+    entry per configured device with enough metadata for the client to
+    build a card:
+      - id: the state-key prefix (e.g. "br1", "udm")
+      - kind: the driver kind, or "legacy_<id>" for pre-driver entries
+      - display_name: human label
+      - is_mobile: hint for the UI to pick cellular-specific views
+      - capabilities: list of strings like ["rest", "ssh_ping",
+        "per_wan_carriers"] so the client knows which sub-views apply
+
+    Passwords and other secrets are NEVER included.
+    """
+    result: list[dict] = []
+    for dev_id, raw in (config.get("devices") or {}).items():
+        if not isinstance(raw, dict):
+            continue
+        capabilities: list[str] = []
+        kind = raw.get("kind")
+        if kind is None:
+            # Legacy entry — surface its implied kind so the client can
+            # still render something sensible.
+            if dev_id == "udm":
+                kind = "legacy_unifi_network"
+            elif dev_id in ("br1", "balance310"):
+                kind = "legacy_peplink_router"
+            else:
+                kind = f"legacy_{dev_id}"
+        if raw.get("ssh", {}).get("enabled"):
+            capabilities.append("ssh_ping")
+        if raw.get("wan_carriers"):
+            capabilities.append("per_wan_carriers")
+        if raw.get("host"):
+            capabilities.append("rest")
+        result.append({
+            "id":            dev_id,
+            "kind":          kind,
+            "display_name":  raw.get("name") or dev_id,
+            "host":          raw.get("host", ""),
+            "is_mobile":     bool(raw.get("is_mobile", False)),
+            "capabilities":  capabilities,
+        })
+    return JSONResponse({"devices": result})
+
+
+@app.get("/api/driver-kinds")
+async def list_driver_kinds():
+    """Return the driver kinds this server knows about. The iPhone app's
+    'Add device' wizard uses this to populate the kind dropdown."""
+    from pollers.drivers import DRIVERS
+    return JSONResponse({"kinds": sorted(DRIVERS.keys())})
+
+
 _controllers: dict[str, PeplinkController] = {}
 _udm_controller: UdmController | None = None
 
