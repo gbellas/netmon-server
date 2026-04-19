@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel redundant runs (e.g. force-pushes during a failing CI run)
+# so we don't burn minutes on stale commits.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: pytest + lint
+    # ubuntu is free-tier on private repos (macOS is 10x more expensive).
+    # Our tests don't need macOS — the device-polling code runs on any OS.
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          # Match the interpreter the Mac Studio deployment uses so we
+          # catch any 3.14-only syntax that would fail there.
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio ruff mypy
+
+      - name: Lint (ruff)
+        # Non-blocking for now — we'll tighten this once the codebase
+        # catches up with ruff's stricter defaults. For v1 we just want
+        # a readable report in the CI log.
+        run: ruff check . || true
+
+      - name: Type check (mypy)
+        # Same rationale — informational during early v1.
+        run: mypy --ignore-missing-imports --strict-optional server.py \
+             pollers/drivers/ || true
+
+      - name: Run tests
+        run: pytest tests/ -v --tb=short
