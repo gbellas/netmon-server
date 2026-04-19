@@ -291,6 +291,35 @@ async def list_devices():
     return JSONResponse({"devices": result})
 
 
+@app.get("/api/devices/{dev_id}")
+async def get_device(dev_id: str):
+    """Return the full config for a single device, with secrets stripped.
+
+    Used by the iPhone Edit-device form to prefill non-secret fields
+    (ICMP targets, port, SSH config flag, etc.) that the summary
+    endpoint at GET /api/devices deliberately omits. Passwords are
+    ALWAYS redacted on the wire — the editor shows them as blank and
+    the user re-types if they want to change them.
+    """
+    devices = config.get("devices") or {}
+    raw = devices.get(dev_id)
+    if raw is None:
+        raise HTTPException(404, f"no device with id {dev_id!r}")
+    import copy
+    clean = copy.deepcopy(raw)
+
+    def _strip(node: Any) -> None:
+        if not isinstance(node, dict):
+            return
+        for k in list(node.keys()):
+            if k in ("password", "client_secret", "secret", "auth_token"):
+                node[k] = ""
+            else:
+                _strip(node[k])
+    _strip(clean)
+    return JSONResponse({"id": dev_id, "config": clean})
+
+
 @app.get("/api/driver-kinds")
 async def list_driver_kinds():
     """Return the driver kinds this server knows about. The iPhone app's

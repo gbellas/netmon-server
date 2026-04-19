@@ -92,6 +92,18 @@ final class ServerController: ObservableObject {
         )
         syncServerFilesFromBundle()
         loadExistingToken()
+        // If this isn't a first run (we already have a token), auto-start
+        // the server. The Setup window only needs to show for brand-new
+        // installs; subsequent launches should "just work" with zero
+        // clicks.
+        if !isFirstRun {
+            // Dispatch to the next runloop tick so SwiftUI has a chance
+            // to finish installing its environment objects before the
+            // status-change @Published fires.
+            DispatchQueue.main.async { [weak self] in
+                self?.start()
+            }
+        }
     }
 
     // MARK: - Start / stop
