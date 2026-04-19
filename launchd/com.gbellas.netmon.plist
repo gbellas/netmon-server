@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.gbellas.netmon</string>
+
+    <!--
+        Template: the path strings below are replaced by `scripts/install_launchd.sh`
+        on install. The install script substitutes $HOME for "__HOME__" and copies
+        the result to ~/Library/LaunchAgents/. If you're hand-editing, replace
+        every "__HOME__" with the absolute path of your home directory.
+
+        Running run.sh (instead of invoking uvicorn directly) ensures `.env` is
+        sourced — launchd has a sparse environment by default, so bypassing the
+        shell wrapper means NETMON_*_PASSWORD env vars would be empty and all
+        device SSH/REST calls would auth-fail.
+    -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>__HOME__/NetworkMonitor/run.sh</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>__HOME__/NetworkMonitor</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>HOME</key>
+        <string>__HOME__</string>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>__HOME__/NetworkMonitor/logs/netmon.out</string>
+    <key>StandardErrorPath</key>
+    <string>__HOME__/NetworkMonitor/logs/netmon.err</string>
+</dict>
+</plist>

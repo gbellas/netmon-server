@@ -1,0 +1,10 @@
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+aiohttp>=3.10.0
+pyyaml>=6.0
+pexpect>=4.9.0
+certifi>=2024.0.0
+# APNs push: httpx for HTTP/2 (Apple requires HTTP/2), PyJWT+crypto for
+# the ES256 provider-token signing per Apple's token-based auth spec.
+httpx[http2]>=0.27.0
+PyJWT[crypto]>=2.9.0

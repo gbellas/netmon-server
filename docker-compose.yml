@@ -1,0 +1,13 @@
+services:
+  netmon:
+    build: .
+    container_name: netmon
+    restart: unless-stopped
+    ports:
+      - "8077:8077"
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - ./.env:/app/.env:ro
+    env_file:
+      - .env
+    network_mode: host

@@ -1,0 +1,21 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+secrets/
+*.p8
+
+# Runtime-generated
+logs/
+*.log
+scheduled_config.json
+alerts_config.json
+
+# IDE/local state that shouldn't go public
+.claude/
+.DS_Store
+*.swp
+
+# If anyone generates a dump
+push_tokens.json
+config.local.yaml

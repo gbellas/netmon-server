@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#0d1117">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
+  <!-- Inline SW killer: runs before everything else to purge any stale service worker -->
+  <script>
+    (function() {
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(regs) {
+          if (regs && regs.length) {
+            regs.forEach(function(r) { r.unregister(); });
+            if (self.caches) caches.keys().then(function(keys) {
+              keys.forEach(function(k) { caches.delete(k); });
+            });
+          }
+        });
+      }
+    })();
+  </script>
+  <link rel="stylesheet" href="/static/style.css?v=28">
+  <title>NetMon</title>
+</head>
+<body>
+  <!-- Header -->
+  <header id="header">
+    <div class="header-left">
+      <h1>NetMon</h1>
+      <span id="ws-status" class="badge badge-connecting">connecting</span>
+    </div>
+    <div class="header-right">
+      <span id="internet-status" class="badge">--</span>
+      <span id="last-update" class="text-muted">--</span>
+      <button id="edit-toggle" title="Toggle edit mode to reorder widgets">Edit</button>
+    </div>
+  </header>
+
+  <main id="dashboard">
+    <!-- Row 1: Device Cards (each card is individually draggable) -->
+    <section class="row device-row" id="row-devices">
+      <!-- UDM-SE -->
+      <div class="card draggable-card" id="card-udm" data-card-id="udm">
+        <div class="card-header">
+          <span class="status-dot" data-key="udm.status"></span>
+          <span class="card-title">UDM-SE</span>
+          <span class="card-subtitle text-muted" data-text="udm.uptime" data-format="uptime"></span>
+        </div>
+        <div class="card-body">
+          <!-- Compact stats row: CPU / MEM / Clients inline -->
+          <div class="stats-inline">
+            <div class="stat-compact">
+              <span class="stat-label">CPU</span>
+              <div class="bar-container"><div class="bar" data-bar="udm.cpu"></div></div>
+              <span class="stat-value mono" data-text="udm.cpu" data-format="pct"></span>
+            </div>
+            <div class="stat-compact">
+              <span class="stat-label">MEM</span>
+              <div class="bar-container"><div class="bar" data-bar="udm.mem"></div></div>
+              <span class="stat-value mono" data-text="udm.mem" data-format="pct"></span>
+            </div>
+            <div class="stat-compact">
+              <span class="stat-label">Clients</span>
+              <span class="stat-value mono" data-text="udm.clients"></span>
+            </div>
+          </div>
+
+          <!-- Inline WAN rows -->
+          <div class="wan-inline">
+            <div class="wan-row" data-ctrl-device="udm" data-ctrl-wan-id="1">
+              <div class="wan-head">
+                <span class="wan-name">WAN1 <span class="text-muted">Fiber</span></span>
+                <span class="wan-status" data-text="udm.wan1.status" data-format="status-badge"></span>
+                <span class="wan-ip mono text-muted" data-text="udm.wan1.ip"></span>
+              </div>
+              <div class="wan-meta">
+                <span class="mono wan-latency" data-lat-key="udm.wan1.latency" title="UniFi-reported latency on this WAN">--</span>
+                <span class="mono"><span class="text-muted">↓</span> <span data-text="udm.wan1.rx_bps" data-format="bps"></span></span>
+                <span class="mono"><span class="text-muted">↑</span> <span data-text="udm.wan1.tx_bps" data-format="bps"></span></span>
+                <canvas data-sparkline="udm.wan1.rx_bps" width="110" height="26"></canvas>
+                <span class="wan-controls-inline wan-controls"></span>
+              </div>
+            </div>
+            <div class="wan-row" data-ctrl-device="udm" data-ctrl-wan-id="2">
+              <div class="wan-head">
+                <span class="wan-name">WAN2 <span class="text-muted">LTE</span></span>
+                <span class="wan-status" data-text="udm.wan2.status" data-format="status-badge"></span>
+                <span class="wan-ip mono text-muted" data-text="udm.wan2.ip"></span>
+              </div>
+              <div class="wan-meta">
+                <span class="mono wan-latency" data-lat-key="udm.wan2.latency" title="UniFi-reported latency on this WAN">--</span>
+                <span class="mono"><span class="text-muted">↓</span> <span data-text="udm.wan2.rx_bps" data-format="bps"></span></span>
+                <span class="mono"><span class="text-muted">↑</span> <span data-text="udm.wan2.tx_bps" data-format="bps"></span></span>
+                <canvas data-sparkline="udm.wan2.rx_bps" width="110" height="26"></canvas>
+                <span class="wan-controls-inline wan-controls"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- BR1 Pro 5G -->
+      <div class="card draggable-card" id="card-br1" data-card-id="br1" data-mobile="true">
+        <div class="card-header">
+          <span class="status-dot" data-key="br1.status"></span>
+          <span class="card-title">BR1 Pro 5G</span>
+          <span class="card-subtitle text-muted" id="br1-subtitle"></span>
+        </div>
+        <div class="br1-risk-banner" id="br1-risk-banner" style="display:none"></div>
+        <div class="card-body">
+          <!-- Compact stats row: CPU / SpeedFusion inline -->
+          <div class="stats-inline">
+            <div class="stat-compact">
+              <span class="stat-label">CPU</span>
+              <div class="bar-container"><div class="bar" data-bar="br1.cpu"></div></div>
+              <span class="stat-value mono" data-text="br1.cpu" data-format="pct"></span>
+            </div>
+            <div class="stat-compact">
+              <span class="stat-label">SpeedFusion</span>
+              <span class="stat-value" data-text="br1.sf.status" data-format="sf-badge"></span>
+            </div>
+          </div>
+
+          <!-- Inline WAN rows -->
+          <div class="wan-inline">
+            <!-- WAN1 Starlink (bonded, no failover priority) -->
+            <div class="wan-row" data-ctrl-device="br1" data-ctrl-wan-id="1" data-ctrl-mode="enable-only">
+              <div class="wan-head">
+                <span class="wan-name">WAN1 <span class="text-muted">Starlink</span></span>
+                <span class="wan-status" data-text="br1.wan1.status" data-format="status-badge"></span>
+                <span class="bonded-chip" title="Active/active SpeedFusion bonding">BONDED</span>
+                <span class="wan-ip mono text-muted" data-text="br1.wan1.ip"></span>
+              </div>
+              <div class="wan-meta">
+                <span class="mono wan-latency" data-lat-key="br1.wan1.latency_ms" title="Latency to Peplink's SpeedFusion test target">--</span>
+                <span class="mono"><span class="text-muted">↓</span> <span data-text="br1.wan1.rx_bps" data-format="bps"></span></span>
+                <span class="mono"><span class="text-muted">↑</span> <span data-text="br1.wan1.tx_bps" data-format="bps"></span></span>
+                <canvas data-sparkline="br1.wan1.rx_bps" width="110" height="26"></canvas>
+                <span class="wan-controls-inline wan-controls"></span>
+              </div>
+            </div>
+
+            <!-- WAN2 Cellular (bonded, no failover priority) -->
+            <div class="wan-row wan-row-cellular" data-ctrl-device="br1" data-ctrl-wan-id="2" data-ctrl-mode="enable-only">
+              <div class="wan-head">
+                <span class="wan-name">WAN2 <span class="text-muted">Cellular</span></span>
+                <span class="wan-status" data-text="br1.wan2.status" data-format="status-badge"></span>
+                <span class="bonded-chip" title="Active/active SpeedFusion bonding">BONDED</span>
+                <span class="wan-ip mono text-muted" data-text="br1.wan2.data_tech"></span>
+              </div>
+
+              <!-- Big carrier chip -->
+              <div class="carrier-block" id="carrier-block">
+                <div class="carrier-logo" id="carrier-logo"></div>
+                <div class="carrier-info">
+                  <div class="carrier-name" id="carrier-name" data-text="br1.wan2.operator">--</div>
+                  <div class="carrier-mvno" data-text="br1.wan2.carrier_name"></div>
+                </div>
+              </div>
+
+              <!-- RoamLink carrier switcher -->
+              <div class="carrier-switcher" title="Switch RoamLink eSIM to a specific carrier. Re-scan takes up to ~20 min.">
+                <span class="stat-label">Carrier:</span>
+                <button class="carrier-btn carrier-verizon" data-carrier="verizon">Verizon</button>
+                <button class="carrier-btn carrier-att"     data-carrier="att">AT&amp;T</button>
+                <button class="carrier-btn carrier-tmobile" data-carrier="tmobile">T-Mobile</button>
+                <button class="carrier-btn carrier-auto"    data-carrier="auto">Auto</button>
+              </div>
+
+              <!-- RAT (5G/LTE/3G) lock -->
+              <div class="carrier-switcher" title="Lock the cellular modem to a specific radio technology. Useful when 5G has poor signal - forcing LTE often yields better real throughput.">
+                <span class="stat-label">Radio:</span>
+                <button class="rat-btn" data-rat="auto">Auto (5G/LTE)</button>
+                <button class="rat-btn" data-rat="LTE">LTE Only</button>
+                <button class="rat-btn" data-rat="3G">3G Only</button>
+              </div>
+
+              <div class="wan-meta">
+                <span class="mono text-muted" data-text="br1.wan2.band" style="font-size:0.7rem"></span>
+              </div>
+
+              <!-- Per-band details (collapsed by default) -->
+              <details class="bands-details">
+                <summary>
+                  <span class="bands-toggle-icon">▸</span>
+                  <span class="bands-summary-text">All active bands</span>
+                  <span class="bands-count" id="bands-count">—</span>
+                </summary>
+                <table class="band-table" id="bands-table">
+                  <thead>
+                    <tr>
+                      <th>Band</th>
+                      <th>Signal</th>
+                      <th>Quality</th>
+                    </tr>
+                  </thead>
+                  <tbody id="bands-tbody"></tbody>
+                </table>
+              </details>
+
+              <!-- Signal bars -->
+              <div class="stat-row signal-row" title="RSRP — how strong the cell tower signal is">
+                <span class="stat-label">Signal</span>
+                <div class="signal-bars" id="rsrp-bars"><i></i><i></i><i></i><i></i><i></i></div>
+                <span class="stat-value mono text-muted" data-text="br1.wan2.rsrp" data-format="dbm" style="margin-left:auto;font-size:0.7rem"></span>
+              </div>
+              <div class="stat-row signal-row" title="SINR — how clear the signal is (higher = less noise/interference)">
+                <span class="stat-label">Quality</span>
+                <div class="signal-bars" id="sinr-bars"><i></i><i></i><i></i><i></i><i></i></div>
+                <span class="stat-value mono text-muted" data-text="br1.wan2.sinr" data-format="db" style="margin-left:auto;font-size:0.7rem"></span>
+              </div>
+
+              <div class="wan-meta">
+                <span class="mono wan-latency" data-lat-key="br1.wan2.latency_ms" title="Latency over cellular">--</span>
+                <span class="mono"><span class="text-muted">↓</span> <span data-text="br1.wan2.rx_bps" data-format="bps"></span></span>
+                <span class="mono"><span class="text-muted">↑</span> <span data-text="br1.wan2.tx_bps" data-format="bps"></span></span>
+                <canvas data-sparkline="br1.wan2.rx_bps" width="110" height="26"></canvas>
+                <span class="wan-controls-inline wan-controls"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Row 2: SpeedFusion Tunnel -->
+    <section class="row" id="row-sf" data-row-id="sf">
+      <div class="card card-wide" id="card-speedfusion">
+        <div class="card-header">
+          <span class="card-title">SpeedFusion Tunnel</span>
+          <span class="text-muted" id="sf-dep-label" style="font-size:0.7rem; margin-left:8px"></span>
+          <button class="sf-toggle-btn" id="sf-toggle-btn" title="Toggle the SpeedFusion tunnel. When disabled, BR1 routes direct to internet via its WANs.">Loading…</button>
+          <span class="sf-status-badge" data-text="bal310.sf.status" data-format="sf-badge-lg"></span>
+        </div>
+        <div class="sf-risk-banner" id="sf-risk-banner" style="display:none"></div>
+        <div class="card-body sf-grid">
+          <div class="sf-metric">
+            <span class="sf-metric-label">Latency</span>
+            <span class="sf-metric-value mono" data-text="bal310.sf.latency_ms" data-format="ms"></span>
+            <canvas data-sparkline="bal310.sf.latency_ms" width="160" height="40"></canvas>
+          </div>
+          <div class="sf-metric">
+            <span class="sf-metric-label">Download</span>
+            <span class="sf-metric-value mono" data-text="bal310.sf.rx_bps" data-format="bps"></span>
+            <canvas data-sparkline="bal310.sf.rx_bps" width="160" height="40"></canvas>
+          </div>
+          <div class="sf-metric">
+            <span class="sf-metric-label">Upload</span>
+            <span class="sf-metric-value mono" data-text="bal310.sf.tx_bps" data-format="bps"></span>
+            <canvas data-sparkline="bal310.sf.tx_bps" width="160" height="40"></canvas>
+          </div>
+          <div class="sf-metric">
+            <span class="sf-metric-label">Packet Loss</span>
+            <span class="sf-metric-value mono" data-text="bal310.sf.packet_loss_pct" data-format="pct"></span>
+            <canvas data-sparkline="bal310.sf.packet_loss_pct" width="160" height="40"></canvas>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Row 4: BR1 Outbound Internet (via SSH from truck) -->
+    <section class="row" id="br1-internet-section" data-row-id="br1-internet">
+      <div class="card card-wide">
+        <div class="card-header">
+          <span class="card-title">BR1 → Internet (from truck, via SpeedFusion WANs)</span>
+        </div>
+        <div class="card-body ping-grid" id="br1-internet-grid">
+          <!-- Dynamically populated by JS -->
+        </div>
+      </div>
+    </section>
+
+    <!-- BR1 Data Usage (cloud historical from InControl 2) -->
+    <section class="row" id="ic2-usage-section" data-row-id="ic2-usage">
+      <div class="card card-wide">
+        <div class="card-header">
+          <span class="card-title">BR1 Data Usage</span>
+          <span class="text-muted" style="font-size:0.7rem; margin-left:8px">via InControl 2</span>
+        </div>
+        <div class="card-body usage-grid">
+          <!-- WAN1 Starlink -->
+          <div class="usage-wan" data-wan="wan1">
+            <div class="usage-wan-head">
+              <span class="usage-wan-name">WAN1 <span class="text-muted">Starlink</span></span>
+              <span class="usage-month-pill" id="usage-wan1-month">—</span>
+            </div>
+            <div class="usage-totals">
+              <div class="usage-stat">
+                <span class="usage-stat-label">TODAY</span>
+                <span class="usage-stat-value mono" id="usage-wan1-today">— MB</span>
+              </div>
+              <div class="usage-stat">
+                <span class="usage-stat-label">7 DAYS</span>
+                <span class="usage-stat-value mono" id="usage-wan1-7d">— MB</span>
+              </div>
+            </div>
+            <canvas id="usage-wan1-chart" class="usage-chart" height="48"></canvas>
+            <div class="usage-chart-legend">
+              <span><i class="legend-swatch legend-down"></i> Down</span>
+              <span><i class="legend-swatch legend-up"></i> Up</span>
+            </div>
+          </div>
+
+          <!-- WAN2 Cellular -->
+          <div class="usage-wan" data-wan="wan2">
+            <div class="usage-wan-head">
+              <span class="usage-wan-name">WAN2 <span class="text-muted">Cellular</span></span>
+              <span class="usage-month-pill" id="usage-wan2-month">—</span>
+            </div>
+            <div class="usage-totals">
+              <div class="usage-stat">
+                <span class="usage-stat-label">TODAY</span>
+                <span class="usage-stat-value mono" id="usage-wan2-today">— MB</span>
+              </div>
+              <div class="usage-stat">
+                <span class="usage-stat-label">7 DAYS</span>
+                <span class="usage-stat-value mono" id="usage-wan2-7d">— MB</span>
+              </div>
+            </div>
+            <canvas id="usage-wan2-chart" class="usage-chart" height="48"></canvas>
+            <div class="usage-chart-legend">
+              <span><i class="legend-swatch legend-down"></i> Down</span>
+              <span><i class="legend-swatch legend-up"></i> Up</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Recent Events from InControl 2 (cloud event history for BR1) -->
+    <section class="row" id="ic2-events-section" data-row-id="ic2-events">
+      <details class="card card-wide collapsible-card">
+        <summary class="card-header">
+          <span class="collapse-chevron">▸</span>
+          <span class="card-title">BR1 Event Log</span>
+          <span class="text-muted" style="font-size:0.7rem; margin-left:8px">via InControl 2</span>
+          <span class="event-count-pill" id="event-count-pill">—</span>
+        </summary>
+        <div class="card-body">
+          <table class="event-log-table" id="ic2-events-table">
+            <thead>
+              <tr>
+                <th>When</th>
+                <th>Type</th>
+                <th>Detail</th>
+                <th>Location</th>
+              </tr>
+            </thead>
+            <tbody id="ic2-events-tbody">
+              <tr><td colspan="4" style="color:var(--text-muted)">Waiting for InControl data…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </details>
+    </section>
+
+    <!-- UDM Internet Monitors: actual latency from each UDM WAN to external targets -->
+    <section class="row" id="udm-monitors-section" data-row-id="udm-monitors">
+      <div class="card card-wide">
+        <div class="card-header">
+          <span class="card-title">UDM Internet Monitors</span>
+          <span class="text-muted" style="font-size:0.7rem; margin-left:8px">measured by the UDM from each WAN</span>
+        </div>
+        <div class="card-body">
+          <table class="udm-mon-table" id="udm-mon-table">
+            <thead>
+              <tr>
+                <th>Target</th>
+                <th class="col-wan1">WAN1 (Fiber)</th>
+                <th class="col-wan2">WAN2 (LTE)</th>
+              </tr>
+            </thead>
+            <tbody id="udm-mon-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- LAN reachability pings (from wherever NetMon runs) -->
+    <section class="row" id="ping-section" data-row-id="home-pings">
+      <div class="card card-wide">
+        <div class="card-header">
+          <span class="card-title">LAN Reachability</span>
+          <span class="text-muted" style="font-size:0.7rem; margin-left:8px">from the NetMon host</span>
+        </div>
+        <div class="card-body ping-grid" id="ping-grid">
+          <!-- Dynamically populated by JS -->
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="/static/app.js?v=28"></script>
+</body>
+</html>

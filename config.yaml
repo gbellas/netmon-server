@@ -1,0 +1,103 @@
+# NetMon server configuration — edit this with YOUR devices.
+#
+# On the Mac Studio (or wherever you run the server):
+#   1. cp .env.example .env   # fill in passwords + APNs key path
+#   2. Edit this file: replace example devices with yours
+#   3. ./run.sh
+#
+# The `id:` field for each device is free-form. State keys are published
+# as `<id>.<metric>` (e.g. `gateway.cpu_pct`, `truck.signal.rsrp_dbm`),
+# so pick IDs you're willing to live with — renaming later also renames
+# all state/history keys.
+
+server:
+  host: "0.0.0.0"
+  port: 8077
+
+devices:
+  # Example UniFi Dream Machine gateway. Remove if you don't have one.
+  gateway:
+    kind: unifi_network
+    name: "Home Gateway"
+    host: "192.168.1.1"
+    username: "netmon"
+    password: ""                  # set via NETMON_GATEWAY_PASSWORD
+    poll_interval: 10
+    verify_ssl: false
+    # Optional: per-WAN carrier branding, since UniFi sees LTE modems as
+    # generic Ethernet and can't detect the downstream ISP. Known tokens:
+    # fiber | starlink | verizon | att | tmobile | sprint | other
+    wan_carriers:
+      1: fiber
+      2: att
+
+  # Example Peplink Balance router at the home site.
+  balance:
+    kind: peplink_router
+    name: "Home Balance"
+    host: "192.168.2.1"
+    username: "admin"
+    password: ""                  # set via NETMON_BALANCE_PASSWORD
+    poll_interval: 10
+    verify_ssl: false
+    # If this router terminates a SpeedFusion tunnel whose peer connects
+    # via one of the gateway's WANs, declare the dependency so the alert
+    # engine can explain downstream failures.
+    sf_depends_on_gateway_wan: 1
+    # Optional SSH ping streamer — pings tunnel peers from the router
+    # itself. Requires the router's `support ping` CLI to be enabled.
+    ssh:
+      enabled: false
+      port: 22
+      username: "admin"
+      ssh_timeout: 10
+      targets:
+        - name: "Remote peer"
+          host: "192.168.50.1"
+          role: "tunnel"
+
+  # Example mobile Peplink router (BR1, MAX Transit, MBX, etc.)
+  truck:
+    kind: peplink_router
+    name: "Truck Router"
+    host: "192.168.50.1"
+    username: "admin"
+    password: ""                  # set via NETMON_TRUCK_PASSWORD
+    poll_interval: 15
+    verify_ssl: false
+    is_mobile: true               # enables cellular signal / RAT parsing
+    ssh:
+      enabled: false              # flip to true after confirming CLI access
+      port: 22
+      username: "admin"
+      poll_interval: 30
+      count: 5
+      ssh_timeout: 10
+      targets:
+        - name: "Google DNS"
+          host: "8.8.8.8"
+        - name: "Cloudflare"
+          host: "1.1.1.1"
+
+# LAN ping targets. Phone-side ICMP handles internet pings when the phone
+# is on the mobile router's LAN, so these are mostly for home-side checks.
+ping_targets:
+  - name: "Gateway"
+    host: "192.168.1.1"
+
+# Peplink InControl 2 cloud integration. Optional — use if you want
+# cloud-side WAN usage + event feed alongside local polling.
+# Credentials: NETMON_INCONTROL_CLIENT_ID / CLIENT_SECRET env vars.
+incontrol:
+  enabled: false
+  org_id: ""
+  poll_interval: 60
+  event_limit: 30
+
+ping:
+  interval: 5
+  count: 1
+  timeout: 2
+
+history:
+  max_points: 120
