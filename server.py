@@ -221,6 +221,96 @@ async def list_driver_kinds():
     return JSONResponse({"kinds": sorted(DRIVERS.keys())})
 
 
+@app.get("/api/config/export")
+async def export_config():
+    """Return the server's active config as JSON, with all secrets stripped.
+
+    The iPhone's 'Export config' button hits this to produce a share-sheet
+    JSON file that friends can import on their own NetMon installs. We
+    strip every field that could leak a password — even ones the server
+    populated itself from env vars — to prevent accidentally handing
+    someone admin access to the original operator's routers.
+
+    Fields stripped per-device: `password`, `ssh.password`,
+    `oauth.client_secret`, and anything starting with `_`. Top-level
+    `incontrol.client_secret` (if present) also redacted.
+    """
+    import copy
+    exported = copy.deepcopy(config)
+
+    def _strip_secrets(node: Any) -> None:
+        if not isinstance(node, dict):
+            return
+        for k in list(node.keys()):
+            if k.startswith("_"):
+                del node[k]
+                continue
+            if k in ("password", "client_secret", "api_token",
+                     "secret", "auth_token"):
+                # Replace with a placeholder so the JSON shape is
+                # preserved — makes importers' validation trivial.
+                node[k] = ""
+                continue
+            _strip_secrets(node[k])
+
+    _strip_secrets(exported)
+    return JSONResponse(exported)
+
+
+class _ImportConfigBody(BaseModel):
+    """Body for POST /api/config/import. Passed through yaml.safe_dump
+    verbatim (secrets stay in env vars where they belong — the import
+    doesn't write passwords)."""
+    config: dict
+
+
+@app.post("/api/config/import")
+async def import_config(body: _ImportConfigBody):
+    """Replace the server's `config.local.yaml` with the provided dict.
+    The imported config is validated (every device must have a known
+    `kind:` or be a legacy shape) before being written to disk.
+
+    Does NOT hot-reload — the server keeps running with its current
+    config until the operator restarts. This is intentional: a bad
+    import shouldn't be able to take the server offline mid-request.
+    The response tells the client to prompt the user to restart.
+    """
+    import yaml
+    imported = body.config
+    # Validation pass: every device either has a known `kind:` that maps
+    # to a registered driver, or is missing `kind:` (legacy shape — the
+    # import allows that but warns the client).
+    from pollers.drivers import DRIVERS
+    legacy_count = 0
+    for dev_id, raw in (imported.get("devices") or {}).items():
+        if not isinstance(raw, dict):
+            raise HTTPException(400, f"device {dev_id!r}: not an object")
+        kind = raw.get("kind")
+        if kind is None:
+            legacy_count += 1
+            continue
+        if kind not in DRIVERS:
+            raise HTTPException(400,
+                f"device {dev_id!r}: unknown kind {kind!r}. "
+                f"Known: {sorted(DRIVERS.keys())}")
+    # Write to config.local.yaml (the gitignored operator copy). The
+    # committed config.yaml stays untouched as the public example.
+    target = Path(__file__).parent / "config.local.yaml"
+    target.write_text(yaml.safe_dump(imported, default_flow_style=False))
+    target.chmod(0o600)
+    return {
+        "ok": True,
+        "legacy_device_count": legacy_count,
+        "message": (
+            "Imported. Restart the server (launchctl kickstart or run.sh) "
+            "to apply." if legacy_count == 0 else
+            f"Imported. {legacy_count} device(s) use legacy shape; they'll "
+            "still work but won't show up as editable in the app until "
+            "you add a `kind:` field."
+        ),
+    }
+
+
 _controllers: dict[str, PeplinkController] = {}
 _udm_controller: UdmController | None = None
 
