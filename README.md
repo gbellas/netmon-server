@@ -18,22 +18,31 @@ driver-based refactor is in progress — track it under
 ## Quick start
 
 ```bash
-git clone https://github.com/gbellas/netmon-server.git
-cd netmon-server
-cp .env.example .env           # fill in API token + device passwords + APNs key
-cp config.yaml config.local.yaml   # edit config.local.yaml with YOUR device IPs
+git clone https://github.com/gbellas/netmon-server.git ~/NetworkMonitor
+cd ~/NetworkMonitor
+cp .env.example .env
 python3 -m venv .venv && ./.venv/bin/pip install -r requirements.txt
-./run.sh                       # listens on :8077
+./run.sh
 ```
 
-On first launch the server generates `NETMON_API_TOKEN` in `.env` and
-logs it. Paste it into the iPhone app's Settings > API token.
+On first launch the server writes a fresh `NETMON_API_TOKEN` to `.env`
+and logs it. Paste that into the iPhone app's Settings → API token.
 
-To install as a launchd agent that restarts at login:
+Add devices through the app (Settings → Devices → **+**) — no YAML
+editing required for typical setups.
+
+To auto-start at login on macOS:
 
 ```bash
 ./scripts/install_launchd.sh
 ```
+
+### Full guide
+
+See [**docs/DEPLOY.md**](docs/DEPLOY.md) for a 15-minute walkthrough
+covering installation, first-device setup, push notifications, macOS
+launchd agent, updates, troubleshooting, and hardening for non-LAN
+access (Tailscale / WireGuard / reverse-proxy HTTPS).
 
 ## Architecture
 
