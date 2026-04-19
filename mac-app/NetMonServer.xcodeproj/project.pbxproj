@@ -10,6 +10,7 @@
 		0AB967B6C735E0C2F4E9892C /* NetMonServerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F61DCCC5244B0F74A67E053F /* NetMonServerApp.swift */; };
 		3BE67A939450F2EF6496D174 /* PreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CEF3AE9689B8D7446B389E2 /* PreferencesView.swift */; };
 		3ED3121CBAB285CFE257ABEB /* SetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DD37E2F5B2A02D0888689B5 /* SetupView.swift */; };
+		B0B0B0B001000000WIZRD01 /* FirstRunWizard.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0B0B0B002000000WIZRD02 /* FirstRunWizard.swift */; };
 		4881ED18F1A9D1981F5E3240 /* Resources in Resources */ = {isa = PBXBuildFile; fileRef = 9CBB54908ED83B0C90B0DD0B /* Resources */; };
 		C97080BAF00CC840B7F236D7 /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 385D342B6B9AEE5E69A35B04 /* Cocoa.framework */; };
 		EE5ECDA523B7AE2025376136 /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20613E3682D175BBBAC518AB /* MenuBarView.swift */; };
@@ -23,6 +24,7 @@
 		385D342B6B9AEE5E69A35B04 /* Cocoa.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Cocoa.framework; path = Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.0.sdk/System/Library/Frameworks/Cocoa.framework; sourceTree = DEVELOPER_DIR; };
 		582FF1CFCAAD9C13631DE5C4 /* NetMonServer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = NetMonServer.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		5DD37E2F5B2A02D0888689B5 /* SetupView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SetupView.swift; sourceTree = "<group>"; };
+		B0B0B0B002000000WIZRD02 /* FirstRunWizard.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FirstRunWizard.swift; sourceTree = "<group>"; };
 		8CEF3AE9689B8D7446B389E2 /* PreferencesView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PreferencesView.swift; sourceTree = "<group>"; };
 		9A6E645164863A4F17EAD975 /* ServerController.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ServerController.swift; sourceTree = "<group>"; };
 		9CBB54908ED83B0C90B0DD0B /* Resources */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder; name = Resources; path = Resources; sourceTree = "<group>"; };
@@ -58,6 +60,7 @@
 				20613E3682D175BBBAC518AB /* MenuBarView.swift */,
 				A0A0A0A002000000UPDATEC2 /* UpdateChecker.swift */,
 				5DD37E2F5B2A02D0888689B5 /* SetupView.swift */,
+				B0B0B0B002000000WIZRD02 /* FirstRunWizard.swift */,
 				8CEF3AE9689B8D7446B389E2 /* PreferencesView.swift */,
 				DE206BE1230D504A78027703 /* Info.plist */,
 				D870243258214B2280834FE2 /* Resources */,
@@ -170,6 +173,7 @@
 				EE5ECDA523B7AE2025376136 /* MenuBarView.swift in Sources */,
 				A0A0A0A001000000UPDATEC1 /* UpdateChecker.swift in Sources */,
 				3ED3121CBAB285CFE257ABEB /* SetupView.swift in Sources */,
+				B0B0B0B001000000WIZRD01 /* FirstRunWizard.swift in Sources */,
 				3BE67A939450F2EF6496D174 /* PreferencesView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
