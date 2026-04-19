@@ -23,8 +23,7 @@ class TestAppearance:
                        headers={"Authorization": f"Bearer {tok}"})
         assert r.status_code == 200
         body = r.json()
-        for kind in ("peplink_router", "unifi_network", "peplink_derived",
-                     "icmp_ping"):
+        for kind in ("peplink_router", "unifi_network", "icmp_ping"):
             assert kind in body
 
     def test_peplink_router_defaults_match_dashboard(self, api_client):
@@ -59,10 +58,6 @@ class TestAppearance:
             "unifi_network": {
                 "status", "uptime", "host", "cpu", "memory",
                 "client_count", "wan_rows", "ping_targets",
-            },
-            "peplink_derived": {
-                "status", "uptime", "host", "speedfusion",
-                "bonded_throughput",
             },
             "icmp_ping": {
                 "status", "latency", "jitter", "loss", "sparkline",

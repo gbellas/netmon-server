@@ -19,7 +19,6 @@ from __future__ import annotations
 
 from .base import DeviceDriver
 from .peplink_router import PeplinkRouterDriver
-from .peplink_derived import PeplinkDerivedDriver
 from .unifi_network import UniFiNetworkDriver
 from .icmp_ping import IcmpPingDriver
 
@@ -29,7 +28,6 @@ from .icmp_ping import IcmpPingDriver
 # startup handler. See `/api/integrations/incontrol`.
 DRIVERS: dict[str, type[DeviceDriver]] = {
     PeplinkRouterDriver.kind:  PeplinkRouterDriver,
-    PeplinkDerivedDriver.kind: PeplinkDerivedDriver,
     UniFiNetworkDriver.kind:   UniFiNetworkDriver,
     IcmpPingDriver.kind:       IcmpPingDriver,
 }

@@ -15,14 +15,12 @@ final class FirstRunWizardModel: ObservableObject {
     enum DeviceKind: String, CaseIterable, Identifiable {
         case unifiNetwork = "unifi_network"
         case peplinkRouter = "peplink_router"
-        case peplinkDerived = "peplink_derived"
         case icmpPing = "icmp_ping"
         var id: String { rawValue }
         var display: String {
             switch self {
             case .unifiNetwork:   return "UniFi Network"
             case .peplinkRouter:  return "Peplink Router"
-            case .peplinkDerived: return "Peplink Derived"
             case .icmpPing:       return "ICMP Ping Target"
             }
         }
@@ -413,7 +411,7 @@ enum WizardPersistence {
         lines.append("    kind: \(model.deviceKind.rawValue)")
         lines.append("    name: \(q(model.deviceName))")
         switch model.deviceKind {
-        case .unifiNetwork, .peplinkRouter, .peplinkDerived:
+        case .unifiNetwork, .peplinkRouter:
             lines.append("    host: \(q(model.host))")
             lines.append("    username: \(q(model.username))")
             lines.append("    password: \(q(model.password))")
@@ -666,7 +664,7 @@ struct FirstRunWizardView: View {
                 TextField("ID (used as state key prefix)", text: $model.deviceId)
                 TextField("Display name", text: $model.deviceName)
                 switch model.deviceKind {
-                case .unifiNetwork, .peplinkRouter, .peplinkDerived:
+                case .unifiNetwork, .peplinkRouter:
                     TextField("Host (IP or hostname)", text: $model.host)
                     TextField("Username", text: $model.username)
                     SecureField("Password", text: $model.password)
@@ -711,7 +709,7 @@ struct FirstRunWizardView: View {
                 msg = try await DeviceTest.unifi(
                     host: model.host, username: model.username,
                     password: model.password)
-            case .peplinkRouter, .peplinkDerived:
+            case .peplinkRouter:
                 msg = try await DeviceTest.peplink(
                     host: model.host, username: model.username,
                     password: model.password)

@@ -25,9 +25,9 @@ import auth
 from models import AppState
 from ws_manager import WSManager
 # The concrete poller classes (PingPoller, UniFiPoller, PeplinkPoller,
-# Balance310DerivedPoller, BR1SshPingPoller, InControlPoller) are no
-# longer imported here — they're constructed by driver classes under
-# pollers/drivers/*. server.py only knows the registry.
+# BR1SshPingPoller, InControlPoller) are no longer imported here — they're
+# constructed by driver classes under pollers/drivers/*. server.py only
+# knows the registry.
 from controls import PeplinkController
 from controls_udm import UdmController
 from alerts import AlertsEngine
@@ -76,6 +76,10 @@ def _migrate_legacy_config(cfg: dict) -> dict:
        (the names hardcoded in the author's original deployment) get
        inferred kinds: udm → unifi_network, br1 → peplink_router with
        is_mobile=true, balance310 → peplink_router (wired Balance family).
+       A Balance that isn't reachable via local REST should either be
+       deleted from devices: or re-added as an icmp_ping target for
+       reachability + tunnel latency — there's no longer a "derived"
+       kind. See commit that removed peplink_derived.
     2. A non-empty top-level `ping_targets:` list becomes a synthesized
        icmp_ping device at id "ping_targets", carrying over the `ping:`
        block's count/timeout/interval defaults.
@@ -95,16 +99,16 @@ def _migrate_legacy_config(cfg: dict) -> dict:
 
     # 1) Infer `kind:` for the three legacy-named device entries.
     #
-    # `balance310` deliberately maps to `peplink_derived`, NOT
-    # `peplink_router`. The author's Balance 310 is InControl-managed
-    # with no reachable local REST API; the `Balance310DerivedPoller`
-    # that synthesises its state from ping + BR1 peer info is wrapped by
-    # the `peplink_derived` driver. Mapping it to `peplink_router` would
-    # produce permanent REST auth errors. See pollers/drivers/peplink_derived.py.
+    # `balance310` now maps to `peplink_router` (the "derived" kind has
+    # been removed). Deployments whose Balance isn't reachable via local
+    # REST should either delete this entry or re-add it as an icmp_ping
+    # target — ICMP to the router's LAN IP + SSH-ping-to-tunnel-peer
+    # observations give us the same reachability + tunnel-latency data
+    # the old derived poller inferred.
     _legacy_kind_map = {
         "udm":        {"kind": "unifi_network"},
         "br1":        {"kind": "peplink_router", "is_mobile": True},
-        "balance310": {"kind": "peplink_derived"},
+        "balance310": {"kind": "peplink_router"},
     }
     for dev_id, raw in list(devices.items()):
         if not isinstance(raw, dict):
@@ -277,18 +281,6 @@ def _start_driver_device(dev_id: str, raw: dict) -> tuple[int, str]:
     from pollers.drivers import DeviceSpec, get_driver
     try:
         spec = DeviceSpec.from_config(dev_id, raw)
-        # For peplink_derived (InControl-managed Balance routers with no
-        # local REST), we derive the tunnel peer from the sibling
-        # peplink_router flagged is_mobile=true and inject it into
-        # `spec.extra` under reserved underscore keys. The driver uses
-        # those to compute its `tunnel_ping_key` and `br1_name` so its
-        # state matches what the legacy Balance310DerivedPoller produced.
-        if spec.kind == "peplink_derived":
-            peer_id, peer_host = _find_mobile_peplink_peer()
-            if peer_host:
-                spec.extra["_peer_host"] = peer_host
-            if peer_id:
-                spec.extra["_peer_id"] = peer_id
         driver = get_driver(spec.kind)(spec)
     except (KeyError, ValueError) as e:
         return 0, str(e)
@@ -305,23 +297,6 @@ def _start_driver_device(dev_id: str, raw: dict) -> tuple[int, str]:
     _device_tasks[dev_id] = tasks
     _device_drivers[dev_id] = driver
     return len(new_pollers), ""
-
-
-def _find_mobile_peplink_peer() -> tuple[str, str]:
-    """Return `(id, host)` of the first peplink_router device flagged
-    `is_mobile: true`, or `("", "")` if none exists. Used to wire the
-    peplink_derived driver's tunnel-peer reference.
-
-    Picks the first in insertion order (YAML preserves it in pyyaml ≥5).
-    In practice there's only one mobile router in the author's deployment;
-    if a future config has several, the choice is deterministic.
-    """
-    for dev_id, raw in (config.get("devices") or {}).items():
-        if not isinstance(raw, dict):
-            continue
-        if raw.get("kind") == "peplink_router" and raw.get("is_mobile"):
-            return dev_id, raw.get("host", "")
-    return "", ""
 
 
 def _stop_driver_device(dev_id: str) -> int:
@@ -1822,7 +1797,7 @@ async def put_ui_prefs(body: dict):
 # hidden after 17-rc1 wired strict filtering, which produced empty
 # cards for every existing deployment that had never PUT to this
 # endpoint. Keep these lists in sync with the *Card.swift view
-# switches (BR1Card, UDMCard, Balance310Card, PingCard).
+# switches (BR1Card, UDMCard, PingCard).
 _APPEARANCE_DEFAULTS: dict = {
     "peplink_router": {
         "metrics_visible": [
@@ -1856,22 +1831,6 @@ _APPEARANCE_DEFAULTS: dict = {
             "loss_pct":      [1, 5],
             "cpu_pct":       [70, 90],
             "memory_pct":    [70, 90],
-        },
-    },
-    "peplink_derived": {
-        "metrics_visible": [
-            "status", "uptime", "host", "speedfusion", "bonded_throughput",
-        ],
-        "metrics_order": [
-            "status", "uptime", "host", "speedfusion", "bonded_throughput",
-        ],
-        "wan_row_metrics": ["latency", "loss"],
-        "color_thresholds": {
-            "latency_ms":           [100, 500],
-            "loss_pct":             [1, 5],
-            "jitter_ms":            [10, 50],
-            "throughput_up_mbps":   [5, 1],
-            "throughput_down_mbps": [5, 1],
         },
     },
     "icmp_ping": {

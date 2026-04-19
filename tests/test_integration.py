@@ -220,8 +220,7 @@ class TestE2E:
         _, body = _get(f"{base}/api/driver-kinds", token=tok)
         doc = json.loads(body)
         assert set(doc["kinds"]) == {
-            "peplink_router", "peplink_derived",
-            "unifi_network", "icmp_ping",
+            "peplink_router", "unifi_network", "icmp_ping",
         }
 
     def test_config_export_scrubs_passwords(self, server):

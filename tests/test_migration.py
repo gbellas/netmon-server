@@ -59,20 +59,19 @@ class TestLegacyDeviceKindInference:
         # is_mobile so the driver enables RAT parsing.
         assert out["devices"]["br1"]["is_mobile"] is True
 
-    def test_balance310_becomes_peplink_derived(self) -> None:
-        # The author's Balance 310 is InControl-managed with no reachable
-        # local REST API. It migrates to `peplink_derived` (a driver that
-        # synthesises state from ping + BR1 peer info) NOT `peplink_router`
-        # — mapping it to the REST driver would produce permanent auth
-        # errors. See pollers/drivers/peplink_derived.py.
+    def test_balance310_becomes_peplink_router(self) -> None:
+        # The legacy `balance310` device id migrates to `peplink_router`.
+        # The previous `peplink_derived` kind has been removed —
+        # deployments whose Balance isn't reachable via local REST should
+        # delete this entry or re-add it as an icmp_ping target.
         cfg = {
             "devices": {
                 "balance310": {"host": "192.168.2.1", "username": "admin"},
             },
         }
         out = _migrate_legacy_config(copy.deepcopy(cfg))
-        assert out["devices"]["balance310"]["kind"] == "peplink_derived"
-        # No is_mobile fill-in either way (derived driver doesn't care).
+        assert out["devices"]["balance310"]["kind"] == "peplink_router"
+        # Wired Balance family — don't default is_mobile to true.
         assert out["devices"]["balance310"].get("is_mobile", False) is False
 
     def test_explicit_kind_untouched(self) -> None:

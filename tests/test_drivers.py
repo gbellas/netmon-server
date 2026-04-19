@@ -12,7 +12,6 @@ import pytest
 from pollers.drivers import DRIVERS, DeviceSpec, get_driver
 from pollers.drivers.base import DeviceSpec as DeviceSpec2
 from pollers.drivers.peplink_router import PeplinkRouterDriver
-from pollers.drivers.peplink_derived import PeplinkDerivedDriver
 from pollers.drivers.unifi_network import UniFiNetworkDriver
 from pollers.drivers.icmp_ping import IcmpPingDriver
 # InControl is no longer a driver — it's a top-level integration
@@ -27,7 +26,6 @@ class TestRegistry:
         # currently supported").
         assert set(DRIVERS.keys()) == {
             "peplink_router",
-            "peplink_derived",
             "unifi_network",
             "icmp_ping",
         }
@@ -208,76 +206,6 @@ class TestIcmpPingDriver:
         pollers = drv.build_pollers(state=state, ws_manager=ws)
         assert len(pollers) == 1
         assert pollers[0].name == "lan"
-
-
-class TestPeplinkDerivedDriver:
-    def test_requires_host(self) -> None:
-        spec = DeviceSpec(id="bal", kind="peplink_derived",
-                          display_name="bal", host="")
-        with pytest.raises(ValueError, match="missing required 'host'"):
-            PeplinkDerivedDriver(spec)
-
-    def test_builds_derived_poller_only_without_ssh(self, state, ws) -> None:
-        spec = DeviceSpec.from_config(
-            "balance310",
-            {"kind": "peplink_derived", "host": "192.168.2.1"},
-        )
-        drv = PeplinkDerivedDriver(spec)
-        pollers = drv.build_pollers(state=state, ws_manager=ws)
-        # Just the Balance310DerivedPoller — no SSH streamer by default.
-        assert len(pollers) == 1
-        # Name is the legacy "bal310" hardcoded prefix so existing
-        # dashboards keep rendering the same `bal310.*` keys.
-        assert pollers[0].name == "bal310"
-
-    def test_ssh_enabled_builds_two_pollers(self, state, ws) -> None:
-        spec = DeviceSpec.from_config(
-            "balance310",
-            {
-                "kind": "peplink_derived",
-                "host": "192.168.2.1",
-                "username": "admin",
-                "password": "x",
-                "ssh": {
-                    "enabled": True,
-                    "targets": [
-                        {"name": "BR1", "host": "192.168.50.1",
-                         "role": "tunnel"},
-                    ],
-                },
-            },
-        )
-        drv = PeplinkDerivedDriver(spec)
-        pollers = drv.build_pollers(state=state, ws_manager=ws)
-        names = {p.name for p in pollers}
-        assert "bal310" in names
-        assert "balance310_ssh" in names
-
-    def test_peer_host_wired_into_tunnel_ping_key(self, state, ws) -> None:
-        # The server injects `_peer_host` / `_peer_id` before
-        # constructing this driver. When present, the tunnel_ping_key
-        # resolves to the peer router's ping key.
-        spec = DeviceSpec.from_config(
-            "balance310",
-            {"kind": "peplink_derived", "host": "192.168.2.1"},
-        )
-        spec.extra["_peer_host"] = "192.168.50.1"
-        spec.extra["_peer_id"] = "br1"
-        drv = PeplinkDerivedDriver(spec)
-        pollers = drv.build_pollers(state=state, ws_manager=ws)
-        # Introspect the derived poller to confirm the key derivation.
-        d = pollers[0]
-        assert d.tunnel_ping_key == "ping.192_168_50_1"
-        assert d.ping_key == "ping.192_168_2_1"
-        assert d.br1 == "br1"
-
-    def test_set_wan_enabled_raises(self) -> None:
-        spec = DeviceSpec(id="bal", kind="peplink_derived",
-                          display_name="bal", host="192.168.2.1")
-        drv = PeplinkDerivedDriver(spec)
-        import asyncio as _asyncio
-        with pytest.raises(NotImplementedError, match="InControl"):
-            _asyncio.run(drv.set_wan_enabled(1, True))
 
 
 # ---- set_wan_enabled contract per driver -------------------------------
