@@ -1,0 +1,363 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 46;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0AB967B6C735E0C2F4E9892C /* NetMonServerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F61DCCC5244B0F74A67E053F /* NetMonServerApp.swift */; };
+		3BE67A939450F2EF6496D174 /* PreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CEF3AE9689B8D7446B389E2 /* PreferencesView.swift */; };
+		3ED3121CBAB285CFE257ABEB /* SetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DD37E2F5B2A02D0888689B5 /* SetupView.swift */; };
+		4881ED18F1A9D1981F5E3240 /* Resources in Resources */ = {isa = PBXBuildFile; fileRef = 9CBB54908ED83B0C90B0DD0B /* Resources */; };
+		C97080BAF00CC840B7F236D7 /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 385D342B6B9AEE5E69A35B04 /* Cocoa.framework */; };
+		EE5ECDA523B7AE2025376136 /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20613E3682D175BBBAC518AB /* MenuBarView.swift */; };
+		FBE41599130D1D3D77BB6AA9 /* ServerController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A6E645164863A4F17EAD975 /* ServerController.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		20613E3682D175BBBAC518AB /* MenuBarView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MenuBarView.swift; sourceTree = "<group>"; };
+		385D342B6B9AEE5E69A35B04 /* Cocoa.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Cocoa.framework; path = Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.0.sdk/System/Library/Frameworks/Cocoa.framework; sourceTree = DEVELOPER_DIR; };
+		582FF1CFCAAD9C13631DE5C4 /* NetMonServer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = NetMonServer.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		5DD37E2F5B2A02D0888689B5 /* SetupView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SetupView.swift; sourceTree = "<group>"; };
+		8CEF3AE9689B8D7446B389E2 /* PreferencesView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PreferencesView.swift; sourceTree = "<group>"; };
+		9A6E645164863A4F17EAD975 /* ServerController.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ServerController.swift; sourceTree = "<group>"; };
+		9CBB54908ED83B0C90B0DD0B /* Resources */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder; name = Resources; path = Resources; sourceTree = "<group>"; };
+		DE206BE1230D504A78027703 /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		F61DCCC5244B0F74A67E053F /* NetMonServerApp.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NetMonServerApp.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		CB3963832393A3B396B829FE /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C97080BAF00CC840B7F236D7 /* Cocoa.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		5423A0334DA9806DE59710EC /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				730231FE340E9BDD1282B1C0 /* OS X */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		5964B959F7326F7324480311 /* NetMonServer */ = {
+			isa = PBXGroup;
+			children = (
+				F61DCCC5244B0F74A67E053F /* NetMonServerApp.swift */,
+				9A6E645164863A4F17EAD975 /* ServerController.swift */,
+				20613E3682D175BBBAC518AB /* MenuBarView.swift */,
+				5DD37E2F5B2A02D0888689B5 /* SetupView.swift */,
+				8CEF3AE9689B8D7446B389E2 /* PreferencesView.swift */,
+				DE206BE1230D504A78027703 /* Info.plist */,
+				D870243258214B2280834FE2 /* Resources */,
+				9CBB54908ED83B0C90B0DD0B /* Resources */,
+			);
+			name = NetMonServer;
+			path = NetMonServer;
+			sourceTree = "<group>";
+		};
+		730231FE340E9BDD1282B1C0 /* OS X */ = {
+			isa = PBXGroup;
+			children = (
+				385D342B6B9AEE5E69A35B04 /* Cocoa.framework */,
+			);
+			name = "OS X";
+			sourceTree = "<group>";
+		};
+		915E153A83ABD6EA7A0E0249 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				582FF1CFCAAD9C13631DE5C4 /* NetMonServer.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		D0003FD2673CD9BCB7BF1F06 = {
+			isa = PBXGroup;
+			children = (
+				915E153A83ABD6EA7A0E0249 /* Products */,
+				5423A0334DA9806DE59710EC /* Frameworks */,
+				5964B959F7326F7324480311 /* NetMonServer */,
+			);
+			sourceTree = "<group>";
+		};
+		D870243258214B2280834FE2 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Resources;
+			path = Resources;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		0D80903A99FE78DFD43D088B /* NetMonServer */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 3D6D5DD00138AC8974915437 /* Build configuration list for PBXNativeTarget "NetMonServer" */;
+			buildPhases = (
+				0DD442DB4F9CC41DDCB12B3C /* Sources */,
+				CB3963832393A3B396B829FE /* Frameworks */,
+				0923FE74EC86858AF569AA60 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = NetMonServer;
+			productName = NetMonServer;
+			productReference = 582FF1CFCAAD9C13631DE5C4 /* NetMonServer.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		0130B4E6578FA05AC93E4A46 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				LastSwiftUpdateCheck = 1600;
+				LastUpgradeCheck = 1600;
+			};
+			buildConfigurationList = 4141C7840205106AF382B92D /* Build configuration list for PBXProject "NetMonServer" */;
+			compatibilityVersion = "Xcode 3.2";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = D0003FD2673CD9BCB7BF1F06;
+			minimizedProjectReferenceProxies = 0;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 915E153A83ABD6EA7A0E0249 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				0D80903A99FE78DFD43D088B /* NetMonServer */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		0923FE74EC86858AF569AA60 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4881ED18F1A9D1981F5E3240 /* Resources in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		0DD442DB4F9CC41DDCB12B3C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0AB967B6C735E0C2F4E9892C /* NetMonServerApp.swift in Sources */,
+				FBE41599130D1D3D77BB6AA9 /* ServerController.swift in Sources */,
+				EE5ECDA523B7AE2025376136 /* MenuBarView.swift in Sources */,
+				3ED3121CBAB285CFE257ABEB /* SetupView.swift in Sources */,
+				3BE67A939450F2EF6496D174 /* PreferencesView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		3231A44575F4785C86682A67 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		4F4F3EBC2A1D9322D8283471 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = NetMonServer/NetMonServer.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 9ZB72X2V54;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = NetMonServer/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.gbellas.netmon.server;
+				PRODUCT_NAME = "NetMon Server";
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		B2D17192B5CD4E514E759A03 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = NetMonServer/NetMonServer.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 9ZB72X2V54;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = NetMonServer/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.gbellas.netmon.server;
+				PRODUCT_NAME = "NetMon Server";
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		CA61446057C499A95D92CEFD /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		3D6D5DD00138AC8974915437 /* Build configuration list for PBXNativeTarget "NetMonServer" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B2D17192B5CD4E514E759A03 /* Release */,
+				4F4F3EBC2A1D9322D8283471 /* Debug */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		4141C7840205106AF382B92D /* Build configuration list for PBXProject "NetMonServer" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3231A44575F4785C86682A67 /* Debug */,
+				CA61446057C499A95D92CEFD /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 0130B4E6578FA05AC93E4A46 /* Project object */;
+}

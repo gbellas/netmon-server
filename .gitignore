@@ -20,3 +20,10 @@ alerts_config.json
 push_tokens.json
 config.local.yaml
 .env.fastlane
+
+# Mac app build artifacts — reproducible via xcodebuild + prepare script
+mac-app/build/
+# Generated Python bundle + copied server code — reproducible via
+# mac-app/scripts/prepare-python-bundle.sh. These are ~94 MB + 3k files.
+mac-app/NetMonServer/Resources/python-bundle/
+mac-app/NetMonServer/Resources/server-code/
