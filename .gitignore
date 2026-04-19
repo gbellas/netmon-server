@@ -19,3 +19,4 @@ alerts_config.json
 # If anyone generates a dump
 push_tokens.json
 config.local.yaml
+.env.fastlane
