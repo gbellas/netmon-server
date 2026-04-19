@@ -72,8 +72,8 @@ class PingPoller(BasePoller):
             jitter = round(sum(diffs) / len(diffs), 2)
 
         return {
-            f"ping.{target_key}.jitter_ms": jitter,
-            f"ping.{target_key}.packet_loss_pct": loss_pct,
+            f"{self.name}.{target_key}.jitter_ms": jitter,
+            f"{self.name}.{target_key}.packet_loss_pct": loss_pct,
         }
 
     async def poll(self) -> dict:
@@ -92,11 +92,16 @@ class PingPoller(BasePoller):
 
             rtt, success = await tasks[host]
 
-            updates[f"ping.{key}.name"] = name
-            updates[f"ping.{key}.host"] = host
-            updates[f"ping.{key}.hidden"] = bool(target.get("hidden", False))
-            updates[f"ping.{key}.status"] = "ok" if success else "timeout"
-            updates[f"ping.{key}.latency_ms"] = round(rtt, 2) if rtt is not None else -1
+            # Use self.name as the state-key prefix so driver-based
+            # pollers with custom IDs publish under `<id>.*` and the
+            # UI's UserDeviceSection / PingTargetsSection can find them.
+            # Legacy PingPoller instances pass name="ping" and keep
+            # publishing `ping.*` — backwards compatible.
+            updates[f"{self.name}.{key}.name"] = name
+            updates[f"{self.name}.{key}.host"] = host
+            updates[f"{self.name}.{key}.hidden"] = bool(target.get("hidden", False))
+            updates[f"{self.name}.{key}.status"] = "ok" if success else "timeout"
+            updates[f"{self.name}.{key}.latency_ms"] = round(rtt, 2) if rtt is not None else -1
 
             stats = self._update_stats(key, rtt, success)
             updates.update(stats)
