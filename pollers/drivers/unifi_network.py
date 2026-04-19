@@ -65,3 +65,22 @@ class UniFiNetworkDriver:
         poller.name = spec.id
         poller.logger = logging.getLogger(f"netmon.{spec.id}")
         return [poller]
+
+    async def set_wan_enabled(self, wan_index: int, enabled: bool) -> dict:
+        """Not supported on UniFi gateways (yet).
+
+        A clean toggle requires a read-modify-write on the WAN's
+        networkconf object (GET `/proxy/network/api/s/<site>/rest/networkconf/<id>`,
+        flip `enabled`, PUT back). That's more surface area than we want
+        for a shipping patch — partial updates can desync UniFi Network's
+        internal config engine and produce hard-to-diagnose UI states.
+
+        Ship a clear 501 instead; expand when we have a reproducible
+        test environment for the round-trip. The iOS app can hide the
+        toggle based on the 501 response.
+        """
+        raise NotImplementedError(
+            "WAN enable/disable is not yet supported for unifi_network. "
+            "UniFi requires a read-modify-write on networkconf which we "
+            "haven't implemented safely yet — prefer the UniFi UI for now."
+        )

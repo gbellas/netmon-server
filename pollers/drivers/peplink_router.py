@@ -27,6 +27,10 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
+import ssl
+
+import aiohttp
+
 from .base import DeviceSpec
 from ..peplink import PeplinkPoller
 from ..br1_ssh_ping import PeplinkSshPingPoller
@@ -55,6 +59,11 @@ class PeplinkRouterDriver:
         # routers serialize CLI access globally, and collisions look like
         # flapping latency.
         self._shared_ping_lock = asyncio.Lock()
+
+        # Reference to the REST poller set by `build_pollers`. We reuse
+        # its authenticated aiohttp session for WAN toggle requests so
+        # we don't force a second login round-trip per click.
+        self._rest_poller: PeplinkPoller | None = None
 
     def build_pollers(
         self,
@@ -94,6 +103,7 @@ class PeplinkRouterDriver:
             bandwidth_meter=bandwidth_meter,
         )
         pollers.append(rest)
+        self._rest_poller = rest
 
         # Optional SSH ping streamer — many users won't enable this. It
         # requires the router's `support ping` CLI to be reachable over
@@ -139,6 +149,83 @@ class PeplinkRouterDriver:
             pollers.append(ssh)
 
         return pollers
+
+    async def set_wan_enabled(self, wan_index: int, enabled: bool) -> dict:
+        """Toggle a WAN via the Peplink local REST API.
+
+        Strategy: reuse the REST poller's authenticated aiohttp session
+        so we don't pay for a separate login. If the REST poller hasn't
+        authenticated yet (e.g. the server is very new, or the router
+        was down at startup), fall through to a short-lived session that
+        logs in just for this call.
+
+        Uses the same `/api/config.wan.connection` endpoint the legacy
+        `controls.py` / `PeplinkController` path used. That path is
+        known-working on every Peplink firmware the author has tested
+        against (BR1 Pro 5G, MAX Transit, Balance 20/50/310, MBX).
+        `{id: <wan_index>, enable: <bool>}` is the documented body.
+        """
+        spec = self.spec
+        body = {"id": int(wan_index), "enable": bool(enabled)}
+
+        # Preferred path: piggyback on the poller's live session.
+        rest = self._rest_poller
+        if rest is not None and rest._session is not None and not rest._session.closed:
+            if not rest._authenticated:
+                await rest._authenticate()
+            session = rest._session
+            resp = await session.post(
+                f"{rest.base_url}/api/config.wan.connection", json=body,
+            )
+            if resp.status == 401:
+                rest._authenticated = False
+                await rest._authenticate()
+                resp = await session.post(
+                    f"{rest.base_url}/api/config.wan.connection", json=body,
+                )
+            resp.raise_for_status()
+            data = await resp.json()
+            # Best-effort apply. Firmwares vary — some auto-apply on the
+            # write, others want an explicit config apply. We mirror
+            # `PeplinkController.apply_config()` which swallows the error
+            # because "apply not required" is benign.
+            try:
+                apply_resp = await session.post(
+                    f"{rest.base_url}/api/cmd.config.apply", json={},
+                )
+                apply_resp.raise_for_status()
+            except Exception:
+                pass
+            return data
+
+        # Fallback: spin a short-lived session. Happens when the REST
+        # poller is present but never successfully authed, or in the
+        # unlikely case set_wan_enabled is called before build_pollers.
+        ctx = ssl.create_default_context()
+        if not spec.verify_ssl:
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+        timeout = aiohttp.ClientTimeout(total=10)
+        async with aiohttp.ClientSession(
+            cookie_jar=aiohttp.CookieJar(unsafe=True),
+            connector=aiohttp.TCPConnector(ssl=ctx),
+            timeout=timeout,
+        ) as s:
+            base = f"https://{spec.host}"
+            login = await s.post(
+                f"{base}/api/login",
+                json={"username": spec.username, "password": spec.password},
+            )
+            login.raise_for_status()
+            resp = await s.post(f"{base}/api/config.wan.connection", json=body)
+            resp.raise_for_status()
+            data = await resp.json()
+            try:
+                apply_resp = await s.post(f"{base}/api/cmd.config.apply", json={})
+                apply_resp.raise_for_status()
+            except Exception:
+                pass
+            return data
 
     @staticmethod
     def _default_key_prefixes(device_id: str) -> dict[str, str]:

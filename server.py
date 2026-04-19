@@ -4,6 +4,7 @@ import asyncio
 import logging
 import os
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -93,10 +94,17 @@ def _migrate_legacy_config(cfg: dict) -> dict:
         return cfg
 
     # 1) Infer `kind:` for the three legacy-named device entries.
+    #
+    # `balance310` deliberately maps to `peplink_derived`, NOT
+    # `peplink_router`. The author's Balance 310 is InControl-managed
+    # with no reachable local REST API; the `Balance310DerivedPoller`
+    # that synthesises its state from ping + BR1 peer info is wrapped by
+    # the `peplink_derived` driver. Mapping it to `peplink_router` would
+    # produce permanent REST auth errors. See pollers/drivers/peplink_derived.py.
     _legacy_kind_map = {
         "udm":        {"kind": "unifi_network"},
         "br1":        {"kind": "peplink_router", "is_mobile": True},
-        "balance310": {"kind": "peplink_router"},
+        "balance310": {"kind": "peplink_derived"},
     }
     for dev_id, raw in list(devices.items()):
         if not isinstance(raw, dict):
@@ -211,6 +219,14 @@ _registered_pollers: list = []
 # fallback path below and aren't tracked here.
 _device_tasks: dict[str, list] = {}
 
+# Per-device (id → driver-instance) map. Endpoints that need to invoke
+# a driver method (e.g. POST /api/devices/{id}/wan/{n}/enable calling
+# `driver.set_wan_enabled`) look up the live instance here rather than
+# rebuilding it from config — that way any in-memory state the driver
+# attached during build_pollers (cached session references, shared
+# locks) stays available.
+_device_drivers: dict[str, Any] = {}
+
 
 def _start_driver_device(dev_id: str, raw: dict) -> tuple[int, str]:
     """Build + start the pollers for a single driver-backed device.
@@ -224,6 +240,18 @@ def _start_driver_device(dev_id: str, raw: dict) -> tuple[int, str]:
     from pollers.drivers import DeviceSpec, get_driver
     try:
         spec = DeviceSpec.from_config(dev_id, raw)
+        # For peplink_derived (InControl-managed Balance routers with no
+        # local REST), we derive the tunnel peer from the sibling
+        # peplink_router flagged is_mobile=true and inject it into
+        # `spec.extra` under reserved underscore keys. The driver uses
+        # those to compute its `tunnel_ping_key` and `br1_name` so its
+        # state matches what the legacy Balance310DerivedPoller produced.
+        if spec.kind == "peplink_derived":
+            peer_id, peer_host = _find_mobile_peplink_peer()
+            if peer_host:
+                spec.extra["_peer_host"] = peer_host
+            if peer_id:
+                spec.extra["_peer_id"] = peer_id
         driver = get_driver(spec.kind)(spec)
     except (KeyError, ValueError) as e:
         return 0, str(e)
@@ -238,7 +266,25 @@ def _start_driver_device(dev_id: str, raw: dict) -> tuple[int, str]:
         _registered_pollers.append(p)
         tasks.append(asyncio.create_task(p.run()))
     _device_tasks[dev_id] = tasks
+    _device_drivers[dev_id] = driver
     return len(new_pollers), ""
+
+
+def _find_mobile_peplink_peer() -> tuple[str, str]:
+    """Return `(id, host)` of the first peplink_router device flagged
+    `is_mobile: true`, or `("", "")` if none exists. Used to wire the
+    peplink_derived driver's tunnel-peer reference.
+
+    Picks the first in insertion order (YAML preserves it in pyyaml ≥5).
+    In practice there's only one mobile router in the author's deployment;
+    if a future config has several, the choice is deterministic.
+    """
+    for dev_id, raw in (config.get("devices") or {}).items():
+        if not isinstance(raw, dict):
+            continue
+        if raw.get("kind") == "peplink_router" and raw.get("is_mobile"):
+            return dev_id, raw.get("host", "")
+    return "", ""
 
 
 def _stop_driver_device(dev_id: str) -> int:
@@ -248,6 +294,7 @@ def _stop_driver_device(dev_id: str) -> int:
     Safe to call for unknown ids (no-op). Does NOT touch config on disk
     — callers do that separately."""
     tasks = _device_tasks.pop(dev_id, [])
+    _device_drivers.pop(dev_id, None)
     for t in tasks:
         t.cancel()
     # Drop the device's state entries (`<id>.*` keys) so the dashboard
@@ -834,6 +881,52 @@ async def control_wan_enable(device: str, wan_id: int, body: WanEnableBody):
     res = await ctrl.set_wan_enable(wan_id, body.enable)
     await ctrl.apply_config()
     return {"ok": True, "result": res}
+
+
+# ---- Driver-backed WAN toggle (generic, any router kind) ----------------
+#
+# Unlike the `/api/control/{device}/wan/{n}/enable` endpoint above (which
+# hardcodes a BR1/UDM controller pair), these route through the
+# `DeviceDriver.set_wan_enabled` protocol method — so adding a new router
+# kind only requires implementing that method on the new driver. The iOS
+# app targets these endpoints to show a uniform toggle UI across device
+# kinds.
+
+async def _driver_wan_toggle(dev_id: str, wan_index: int, enabled: bool) -> dict:
+    """Shared implementation for the enable/disable endpoints."""
+    driver = _device_drivers.get(dev_id)
+    if driver is None:
+        raise HTTPException(404, f"no running driver for device {dev_id!r}")
+    try:
+        result = await driver.set_wan_enabled(wan_index, enabled)
+    except NotImplementedError as e:
+        # 501 is the right code for "this device kind doesn't support
+        # the operation." The client can use it to hide the toggle.
+        raise HTTPException(501, str(e))
+    logger.info(
+        f"driver {type(driver).__name__} WAN{wan_index} "
+        f"{'enabled' if enabled else 'disabled'} on device '{dev_id}'"
+    )
+    return {
+        "ok":        True,
+        "wan_index": int(wan_index),
+        "enabled":   bool(enabled),
+        "result":    result,
+    }
+
+
+@app.post("/api/devices/{dev_id}/wan/{wan_index}/enable")
+async def device_wan_enable(dev_id: str, wan_index: int):
+    """Enable a WAN interface on the given device via its driver.
+    Returns 501 if the device's driver doesn't support WAN toggling."""
+    return await _driver_wan_toggle(dev_id, wan_index, True)
+
+
+@app.post("/api/devices/{dev_id}/wan/{wan_index}/disable")
+async def device_wan_disable(dev_id: str, wan_index: int):
+    """Disable a WAN interface on the given device via its driver.
+    Returns 501 if the device's driver doesn't support WAN toggling."""
+    return await _driver_wan_toggle(dev_id, wan_index, False)
 
 
 # RoamLink carrier PLMN codes (the three carriers Peplink's RoamLink has SIMs for)

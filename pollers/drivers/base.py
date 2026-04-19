@@ -148,3 +148,24 @@ class DeviceDriver(Protocol):
         Peplink driver gives its REST and SSH pollers the same lock so
         they don't trip over the router's `support ping` CLI).
         """
+
+    async def set_wan_enabled(self, wan_index: int, enabled: bool) -> dict:
+        """Enable or disable a WAN interface.
+
+        Drivers that can't implement this — because they don't own a
+        local management API on the device, or the device has no notion
+        of per-WAN enable/disable — raise NotImplementedError with a
+        human-readable message. The server's
+        POST /api/devices/{id}/wan/{n}/{enable|disable} endpoint
+        translates NotImplementedError into a clean 501 so the iOS client
+        can hide the toggle rather than showing a generic error.
+
+        Implementations MUST be idempotent from the driver's view: calling
+        enable on an already-enabled WAN should not error. Drivers that
+        batch a config apply (Peplink) should apply before returning.
+
+        Return value is passed through to the HTTP response as JSON, so
+        return driver-level detail the client might surface. The server
+        wraps it with {ok, wan_index, enabled} on the way out.
+        """
+        ...

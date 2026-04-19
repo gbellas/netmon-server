@@ -92,3 +92,17 @@ class InControlDriver:
             poller.name = spec.id
             poller.logger = logging.getLogger(f"netmon.{spec.id}")
         return [poller]
+
+    async def set_wan_enabled(self, wan_index: int, enabled: bool) -> dict:
+        """InControl 2 is a cloud integration, not a router.
+
+        Even though InControl CAN toggle WANs on managed devices, doing
+        that from here would mean picking which managed device the caller
+        meant — and the caller has specifically addressed the `incontrol`
+        device entry, not a downstream router. Raise 501 so callers
+        address the actual router entry instead.
+        """
+        raise NotImplementedError(
+            "incontrol is a cloud integration, not a routed device. "
+            "Target the specific router's device entry to toggle its WAN."
+        )

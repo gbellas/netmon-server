@@ -68,3 +68,10 @@ class IcmpPingDriver:
         poller.name = spec.id
         poller.logger = logging.getLogger(f"netmon.{spec.id}")
         return [poller]
+
+    async def set_wan_enabled(self, wan_index: int, enabled: bool) -> dict:
+        """No-op target — icmp_ping devices don't have WANs to toggle."""
+        raise NotImplementedError(
+            "icmp_ping devices don't expose WAN interfaces; "
+            "there is nothing to enable or disable."
+        )
