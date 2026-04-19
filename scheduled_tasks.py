@@ -85,6 +85,81 @@ class Scheduler:
         self._save()
         return True
 
+    # --- Full CRUD (new) -------------------------------------------------
+    #
+    # The legacy `update_schedule` (partial-field updater) stays for the
+    # existing POST /api/schedule/{key} endpoint; the RESTful CRUD below
+    # is what the new /api/scheduler/tasks endpoints call.
+
+    def _validate_schedule_dict(self, d: dict) -> SpeedtestSchedule:
+        """Parse + validate an incoming dict; raise ValueError on bad data.
+        Kept here (not on the dataclass) so errors can be surfaced to the
+        API as clean 400s rather than generic TypeErrors."""
+        if not isinstance(d, dict):
+            raise ValueError("task body must be an object")
+        if "wan_id" not in d:
+            raise ValueError("task requires 'wan_id'")
+        try:
+            wan_id = int(d["wan_id"])
+        except (TypeError, ValueError):
+            raise ValueError("'wan_id' must be an integer")
+        if wan_id < 1 or wan_id > 8:
+            raise ValueError("'wan_id' out of range (1..8)")
+        try:
+            hour = int(d.get("hour", 8))
+            minute = int(d.get("minute", 0))
+        except (TypeError, ValueError):
+            raise ValueError("'hour' / 'minute' must be integers")
+        if not (0 <= hour <= 23):
+            raise ValueError("'hour' out of range (0..23)")
+        if not (0 <= minute <= 59):
+            raise ValueError("'minute' out of range (0..59)")
+        return SpeedtestSchedule(
+            wan_id=wan_id,
+            enabled=bool(d.get("enabled", True)),
+            hour=hour, minute=minute,
+        )
+
+    def get_task(self, key: str) -> dict | None:
+        s = self.schedules.get(key)
+        if s is None:
+            return None
+        return {"key": key, **s.to_dict()}
+
+    def create_task(self, key: str, body: dict) -> dict:
+        """Add a new schedule. Raises ValueError on id collision / bad body."""
+        if not key or not isinstance(key, str):
+            raise ValueError("task 'key' must be a non-empty string")
+        if key in self.schedules:
+            raise ValueError(f"task {key!r} already exists")
+        s = self._validate_schedule_dict(body)
+        self.schedules[key] = s
+        self._save()
+        return {"key": key, **s.to_dict()}
+
+    def replace_task(self, key: str, body: dict) -> dict | None:
+        if key not in self.schedules:
+            return None
+        s = self._validate_schedule_dict(body)
+        self.schedules[key] = s
+        self._save()
+        return {"key": key, **s.to_dict()}
+
+    def delete_task(self, key: str) -> bool:
+        if key not in self.schedules:
+            return False
+        del self.schedules[key]
+        self._save()
+        return True
+
+    def reload(self) -> None:
+        """Re-read the config file from disk. Use after an external
+        editor mutates it; the run loop picks up changes on the next
+        minute tick without needing this, but tests call it to reassert
+        known state."""
+        self.schedules.clear()
+        self._load()
+
     async def run(self):
         """One-minute tick loop. Fires any schedule whose clock has reached
         its configured time AND hasn't fired yet today."""

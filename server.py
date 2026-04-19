@@ -1135,12 +1135,166 @@ async def list_alert_rules():
     return {"rules": _alerts.catalog_view()}
 
 
-@app.post("/api/alerts/rules/{rule_id}")
-async def update_alert_rule(rule_id: str, body: AlertRuleUpdate):
+@app.get("/api/alerts/rules/{rule_id}")
+async def get_alert_rule(rule_id: str):
     if _alerts is None: raise HTTPException(503, "alerts engine not ready")
-    ok = _alerts.update_rule(rule_id, enabled=body.enabled, threshold=body.threshold)
+    view = _alerts.rule_view(rule_id)
+    if view is None:
+        raise HTTPException(404, f"Unknown rule id: {rule_id}")
+    return view
+
+
+@app.post("/api/alerts/rules")
+async def create_alert_rule(body: dict):
+    """Create a user-authored alert rule.
+
+    Body shape (threshold-style):
+      {id, name, severity, metric, comparison: '<'|'<='|'>'|'>=',
+       threshold: number, unit?, min_duration_sec?, dedup_sec?}
+    Or status-style:
+      {id, name, severity, metric, bad_values: [str,...]}
+
+    Built-in catalog rule ids are reserved; POST with one of them 400s.
+    Writes alerts_config.json and hot-reloads the engine.
+    """
+    if _alerts is None: raise HTTPException(503, "alerts engine not ready")
+    try:
+        view = _alerts.create_rule(body)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return view
+
+
+@app.put("/api/alerts/rules/{rule_id}")
+async def replace_alert_rule(rule_id: str, body: dict):
+    """Replace a custom rule in place.
+
+    Built-in rules cannot be replaced via PUT — the server rejects with
+    400 and directs the caller to POST /api/alerts/rules/{id} for the
+    partial `enabled`/`threshold` override path. Writes config and
+    hot-reloads.
+    """
+    if _alerts is None: raise HTTPException(503, "alerts engine not ready")
+    try:
+        view = _alerts.replace_rule(rule_id, body)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    if view is None:
+        raise HTTPException(404, f"Unknown rule id: {rule_id}")
+    return view
+
+
+@app.delete("/api/alerts/rules/{rule_id}")
+async def delete_alert_rule(rule_id: str):
+    """Delete a custom rule. Built-in rules return 400."""
+    if _alerts is None: raise HTTPException(503, "alerts engine not ready")
+    if rule_id in _alerts._builtin_ids:
+        raise HTTPException(
+            400, f"cannot delete built-in rule {rule_id!r}"
+        )
+    ok = _alerts.delete_rule(rule_id)
+    if not ok:
+        raise HTTPException(404, f"Unknown rule id: {rule_id}")
+    return {"ok": True, "id": rule_id}
+
+
+@app.post("/api/alerts/rules/{rule_id}/test")
+async def test_alert_rule(rule_id: str):
+    """Dry-run a rule against current state — does NOT change firing
+    state or emit a notification. Useful for the UI's "does this rule
+    work?" button."""
+    if _alerts is None: raise HTTPException(503, "alerts engine not ready")
+    result = _alerts.test_rule(rule_id)
+    if result is None:
+        raise HTTPException(404, f"Unknown rule id: {rule_id}")
+    return result
+
+
+# Kept for backward compat: the old POST /api/alerts/rules/{id} endpoint
+# was a PARTIAL updater for enabled/threshold overrides. It's ambiguous
+# with the new POST /api/alerts/rules (create). We re-expose the partial
+# updater under PATCH so clients that need it have a non-conflicting
+# route.
+
+@app.patch("/api/alerts/rules/{rule_id}")
+async def patch_alert_rule(rule_id: str, body: AlertRuleUpdate):
+    """Partial update: override `enabled` and/or `threshold` on any
+    rule (built-in or custom)."""
+    if _alerts is None: raise HTTPException(503, "alerts engine not ready")
+    ok = _alerts.update_rule(
+        rule_id, enabled=body.enabled, threshold=body.threshold
+    )
     if not ok: raise HTTPException(404, f"Unknown rule id: {rule_id}")
     return {"ok": True}
+
+
+# ---- Scheduler CRUD ----------------------------------------------------
+#
+# `/api/scheduler/tasks` is the full-CRUD variant. The legacy
+# `/api/schedule` endpoints below are retained for clients that pinned
+# to them — they still work but only expose partial updates.
+
+@app.get("/api/scheduler/tasks")
+async def list_scheduler_tasks():
+    if _scheduler is None: raise HTTPException(503, "scheduler not ready")
+    return {"tasks": _scheduler.list_schedules()}
+
+
+@app.get("/api/scheduler/tasks/{task_id}")
+async def get_scheduler_task(task_id: str):
+    if _scheduler is None: raise HTTPException(503, "scheduler not ready")
+    task = _scheduler.get_task(task_id)
+    if task is None:
+        raise HTTPException(404, f"Unknown task id: {task_id}")
+    return task
+
+
+class _SchedulerTaskBody(BaseModel):
+    """Payload for POST/PUT. `id` is optional on POST (URL path or
+    body). `config` is flat (wan_id, enabled, hour, minute)."""
+    id: str | None = None
+    wan_id: int | None = None
+    enabled: bool | None = None
+    hour: int | None = None
+    minute: int | None = None
+
+
+@app.post("/api/scheduler/tasks")
+async def create_scheduler_task(body: _SchedulerTaskBody):
+    if _scheduler is None: raise HTTPException(503, "scheduler not ready")
+    task_id = (body.id or "").strip()
+    if not task_id:
+        raise HTTPException(400, "task 'id' is required")
+    payload = body.model_dump(exclude_none=True)
+    payload.pop("id", None)
+    try:
+        result = _scheduler.create_task(task_id, payload)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return result
+
+
+@app.put("/api/scheduler/tasks/{task_id}")
+async def update_scheduler_task(task_id: str, body: _SchedulerTaskBody):
+    if _scheduler is None: raise HTTPException(503, "scheduler not ready")
+    payload = body.model_dump(exclude_none=True)
+    payload.pop("id", None)
+    try:
+        result = _scheduler.replace_task(task_id, payload)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    if result is None:
+        raise HTTPException(404, f"Unknown task id: {task_id}")
+    return result
+
+
+@app.delete("/api/scheduler/tasks/{task_id}")
+async def delete_scheduler_task(task_id: str):
+    if _scheduler is None: raise HTTPException(503, "scheduler not ready")
+    ok = _scheduler.delete_task(task_id)
+    if not ok:
+        raise HTTPException(404, f"Unknown task id: {task_id}")
+    return {"ok": True, "id": task_id}
 
 
 @app.get("/api/schedule")
@@ -1156,6 +1310,150 @@ async def update_schedule(key: str, body: ScheduleUpdate):
         key, enabled=body.enabled, hour=body.hour, minute=body.minute)
     if not ok: raise HTTPException(404, f"Unknown schedule key: {key}")
     return {"ok": True}
+
+
+# ---- Server-level settings --------------------------------------------
+#
+# `/api/settings` exposes the non-per-device knobs from config.yaml:
+# history, server.host/port, ping defaults. Fields that require a full
+# restart (server.port / server.host) are marked in the PUT response
+# under `requires_restart`; in-process state (history.max_points) is
+# applied immediately.
+
+_IMMEDIATE_SETTINGS = {
+    # Keys the server can honor live. Everything else is deferred.
+    "history.max_points",
+}
+
+
+def _settings_view() -> dict:
+    """Project config.yaml down to the settings-surface the API exposes.
+
+    Ping block: the top-level `ping:` field was migrated into the
+    icmp_ping device at startup, so in the live config dict it's gone.
+    We reconstitute it from the `ping_targets` device if present so the
+    API view stays stable across restarts."""
+    history = dict(config.get("history") or {})
+    history.setdefault("max_points", state._max_history if hasattr(state, "_max_history") else 120)
+
+    server_cfg = dict(config.get("server") or {})
+    server_cfg.setdefault("host", "0.0.0.0")
+    server_cfg.setdefault("port", 8077)
+
+    # Ping: inspect the migrated icmp_ping device if it exists.
+    ping_cfg: dict = {}
+    pt = (config.get("devices") or {}).get("ping_targets")
+    if isinstance(pt, dict):
+        ping_cfg = {
+            "interval": pt.get("interval", 5),
+            "count":    pt.get("count", 1),
+            "timeout":  pt.get("timeout", 2),
+        }
+    else:
+        ping_cfg = {"interval": 5, "count": 1, "timeout": 2}
+
+    return {
+        "history": {"max_points": int(history.get("max_points", 120))},
+        "server":  {
+            "host": str(server_cfg.get("host", "0.0.0.0")),
+            "port": int(server_cfg.get("port", 8077)),
+        },
+        "ping":    ping_cfg,
+    }
+
+
+@app.get("/api/settings")
+async def get_settings():
+    return _settings_view()
+
+
+class _SettingsBody(BaseModel):
+    """Partial settings update. Any block may be omitted; within a block,
+    any key may be omitted. Unknown keys are rejected at 400."""
+    history: dict | None = None
+    server: dict | None = None
+    ping: dict | None = None
+
+
+@app.put("/api/settings")
+async def update_settings(body: _SettingsBody):
+    """Apply settings, persisting to config.yaml and returning a split
+    view of what went into effect immediately vs what's deferred until
+    the next restart."""
+    applied: dict = {}
+    deferred: dict = {}
+
+    # ---- history block -------------------------------------------------
+    if body.history is not None:
+        for k, v in body.history.items():
+            if k != "max_points":
+                raise HTTPException(400, f"unknown history field: {k!r}")
+            try:
+                vv = int(v)
+            except (TypeError, ValueError):
+                raise HTTPException(400, "history.max_points must be int")
+            if vv < 1 or vv > 100000:
+                raise HTTPException(400, "history.max_points out of range")
+            config.setdefault("history", {})["max_points"] = vv
+            # Apply live: state._max_history is what AppState.update caps
+            # rolling history by. Mutating it means future appends honor
+            # the new cap; already-recorded points remain.
+            try:
+                state._max_history = vv
+            except Exception:
+                pass
+            applied.setdefault("history", {})["max_points"] = vv
+
+    # ---- server block --------------------------------------------------
+    if body.server is not None:
+        for k, v in body.server.items():
+            if k not in ("host", "port"):
+                raise HTTPException(400, f"unknown server field: {k!r}")
+            if k == "port":
+                try:
+                    vv = int(v)
+                except (TypeError, ValueError):
+                    raise HTTPException(400, "server.port must be int")
+                if vv < 1 or vv > 65535:
+                    raise HTTPException(400, "server.port out of range")
+                config.setdefault("server", {})["port"] = vv
+                deferred.setdefault("server", {})["port"] = vv
+            else:
+                config.setdefault("server", {})["host"] = str(v)
+                deferred.setdefault("server", {})["host"] = str(v)
+
+    # ---- ping block ----------------------------------------------------
+    if body.ping is not None:
+        for k, v in body.ping.items():
+            if k not in ("interval", "count", "timeout"):
+                raise HTTPException(400, f"unknown ping field: {k!r}")
+            try:
+                vv = int(v)
+            except (TypeError, ValueError):
+                raise HTTPException(400, f"ping.{k} must be int")
+            # Live-apply by mutating the icmp_ping device config if
+            # present. New pollers pick it up on restart; existing ones
+            # keep their constructor-captured value.
+            devices = config.setdefault("devices", {})
+            pt = devices.setdefault("ping_targets", {
+                "kind": "icmp_ping", "targets": [],
+            })
+            if not isinstance(pt, dict):
+                pt = {"kind": "icmp_ping", "targets": []}
+                devices["ping_targets"] = pt
+            pt[k] = vv
+            # Interval/count/timeout don't retro-apply to running pollers,
+            # so we call them out as deferred. (The config file is still
+            # updated so a restart honors them.)
+            deferred.setdefault("ping", {})[k] = vv
+
+    _persist_config()
+
+    return {
+        "applied": applied,
+        "requires_restart": deferred,
+        "current": _settings_view(),
+    }
 
 
 async def _alerts_loop():

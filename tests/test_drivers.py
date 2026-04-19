@@ -286,14 +286,138 @@ class TestPeplinkDerivedDriver:
 # aiohttp session to avoid touching real hardware.
 
 
+class _FakeUnifiResp:
+    """Minimal aiohttp-response surrogate the UniFi driver reads."""
+
+    def __init__(self, payload, status: int = 200) -> None:
+        self.status = status
+        self._payload = payload
+
+    def raise_for_status(self) -> None:
+        if self.status >= 400:
+            raise RuntimeError(f"http {self.status}")
+
+    async def json(self):
+        return self._payload
+
+
+class _FakeUnifiSession:
+    """Captures the GET/PUT pair issued by UniFi set_wan_enabled."""
+
+    closed = False
+
+    def __init__(self, networkconf_list: list[dict],
+                 get_status: int = 200, put_status: int = 200) -> None:
+        self.networks = networkconf_list
+        self.get_status = get_status
+        self.put_status = put_status
+        self.calls: list[tuple[str, str, dict | None]] = []
+
+    async def get(self, url: str):
+        self.calls.append(("GET", url, None))
+        return _FakeUnifiResp({"data": self.networks}, status=self.get_status)
+
+    async def put(self, url: str, json):
+        self.calls.append(("PUT", url, json))
+        return _FakeUnifiResp(
+            {"data": [json]}, status=self.put_status,
+        )
+
+
+def _unifi_driver_with_fake_session(networks, **status_overrides):
+    """Build a UniFi driver with `_poller` stubbed enough for the code
+    path that reuses an already-authed session."""
+    from pollers.drivers.unifi_network import UniFiNetworkDriver
+    spec = DeviceSpec(
+        id="gw", kind="unifi_network",
+        display_name="gw", host="1.1.1.1", username="netmon", password="x",
+    )
+    drv = UniFiNetworkDriver(spec)
+
+    fake = _FakeUnifiSession(networks, **status_overrides)
+
+    class _FakePoller:
+        _session = fake
+        _authenticated = True
+        base_url = "https://1.1.1.1"
+
+        async def _authenticate(self):
+            self._authenticated = True
+
+    drv._poller = _FakePoller()  # type: ignore[assignment]
+    return drv, fake
+
+
 class TestSetWanEnabled:
-    def test_unifi_raises_not_implemented(self) -> None:
-        spec = DeviceSpec(id="gw", kind="unifi_network",
-                          display_name="gw", host="1.1.1.1", username="a")
-        drv = UniFiNetworkDriver(spec)
+    def test_unifi_happy_path_rmw(self) -> None:
+        """UniFi driver should GET networkconf, pick the right WAN by
+        wan_networkgroup, and PUT the full doc back with enabled flipped."""
         import asyncio as _asyncio
-        with pytest.raises(NotImplementedError, match="unifi_network"):
+        networks = [
+            {
+                "_id": "abc123",
+                "name": "WAN2",
+                "purpose": "wan",
+                "wan_networkgroup": "WAN2",
+                "enabled": True,
+                "wan_type": "dhcp",
+                "other_field": "preserved",
+            },
+            {
+                "_id": "def456",
+                "name": "WAN",
+                "purpose": "wan",
+                "wan_networkgroup": "WAN",
+                "enabled": True,
+            },
+            {
+                "_id": "lan001",
+                "name": "LAN",
+                "purpose": "corporate",
+            },
+        ]
+        drv, fake = _unifi_driver_with_fake_session(networks)
+        result = _asyncio.run(drv.set_wan_enabled(2, False))
+        assert result["ok"] is True
+        assert result["wan_index"] == 2
+        assert result["enabled"] is False
+        assert result["ui_name"] in ("WAN2", "WAN2")
+
+        # Expect a GET list + PUT /abc123.
+        methods = [c[0] for c in fake.calls]
+        urls = [c[1] for c in fake.calls]
+        assert methods == ["GET", "PUT"]
+        assert urls[0].endswith("/rest/networkconf")
+        assert urls[1].endswith("/rest/networkconf/abc123")
+
+        # The PUT body must be the FULL doc (not a partial) with only
+        # `enabled` flipped; other_field must survive.
+        put_body = fake.calls[1][2]
+        assert put_body["_id"] == "abc123"
+        assert put_body["enabled"] is False
+        assert put_body["other_field"] == "preserved"
+        assert put_body["wan_type"] == "dhcp"
+
+    def test_unifi_wan_not_found_raises(self) -> None:
+        import asyncio as _asyncio
+        networks = [
+            {"_id": "x", "purpose": "corporate", "name": "LAN"},
+        ]
+        drv, _ = _unifi_driver_with_fake_session(networks)
+        with pytest.raises(ValueError, match="no WAN network"):
             _asyncio.run(drv.set_wan_enabled(1, True))
+
+    def test_unifi_401_bubbles_as_connection_error(self) -> None:
+        import asyncio as _asyncio
+        networks = [
+            {"_id": "abc", "purpose": "wan",
+             "wan_networkgroup": "WAN", "enabled": True},
+        ]
+        drv, _ = _unifi_driver_with_fake_session(
+            networks, get_status=401,
+        )
+        with pytest.raises(ConnectionError, match="UniFi authentication"):
+            _asyncio.run(drv.set_wan_enabled(1, False))
 
     def test_icmp_ping_raises_not_implemented(self) -> None:
         spec = DeviceSpec.from_config(
