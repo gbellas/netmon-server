@@ -3,48 +3,101 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>NetMon — real-time home + mobile network dashboard</title>
-  <meta name="description" content="NetMon is a personal network monitor: polls your UniFi gateway, Peplink routers, and ICMP ping targets; pairs with an iOS app over your LAN via QR code." />
+  <title>NetMon — live view of your home + mobile network</title>
+  <meta name="description" content="NetMon is a personal network monitor: polls your UniFi and Peplink routers plus any ICMP host, and pairs with an iOS app over your LAN via QR code. Runs entirely on your hardware." />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <header class="hero">
-    <h1>NetMon</h1>
-    <p class="tagline">Real-time home + mobile network dashboard.</p>
-    <p class="sub">Polls your UniFi gateway, Peplink routers, and ping targets every few seconds. Pairs with the iOS app over your LAN.</p>
-    <div class="cta">
-      <a class="btn primary" href="https://github.com/gbellas/netmon-server/releases/latest/download/NetMonServer.dmg">Download for macOS</a>
-      <a class="btn secondary" href="APP_STORE_URL_TBD">iOS App (App Store)</a>
-    </div>
-    <p class="tiny">Requires macOS 13+. Signed &amp; notarized. Free &amp; open source.</p>
-  </header>
+  <main>
+    <header class="hero">
+      <h1>NetMon</h1>
+      <p class="tagline">Live view of your home <span class="accent">+</span> mobile network, on every screen.</p>
+      <p class="sub">A Mac menu-bar app that polls your routers and ping targets every few seconds, and pairs with an iOS app over your LAN via QR code. No cloud, no accounts, no telemetry.</p>
+      <figure class="screenshot">
+        <img src="hero.png" alt="NetMon iOS app showing a dashboard of router cards with live bandwidth numbers." />
+      </figure>
+      <div class="cta">
+        <a class="btn primary" href="https://github.com/gbellas/netmon-server/releases/latest/download/NetMonServer.dmg">Download for Mac</a>
+      </div>
+      <p class="tiny">Requires macOS 14 or later &middot; Signed &amp; notarized &middot; Free and open source</p>
+    </header>
 
-  <section class="grid">
-    <div class="card">
-      <h2>1. Install the server</h2>
-      <p>Download the DMG, drag NetMon.app to Applications, then launch it. It runs as a menu-bar app — click the icon to see the server URL and pairing QR code.</p>
-    </div>
-    <div class="card">
-      <h2>2. Pair your iPhone</h2>
-      <p>Install the iOS app from the App Store, tap "Scan QR", and point it at the menu-bar QR code. Pairing stays on your LAN — no cloud account.</p>
-    </div>
-    <div class="card">
-      <h2>3. Watch your network</h2>
-      <p>Your devices appear on the dashboard as cards. Configure alerts, thresholds, and layouts in the iOS app's Settings tab.</p>
-    </div>
-  </section>
+    <section class="steps" aria-labelledby="install-heading">
+      <h2 id="install-heading">Install in 3 steps</h2>
+      <ol>
+        <li>
+          <span class="step-num">1</span>
+          <div>
+            <h3>Open the DMG</h3>
+            <p>Double-click <code>NetMonServer.dmg</code> and drag <strong>NetMon Server</strong> into your Applications folder.</p>
+          </div>
+        </li>
+        <li>
+          <span class="step-num">2</span>
+          <div>
+            <h3>Launch from Applications</h3>
+            <p>Open NetMon Server. It runs in the menu bar — click its icon to open the setup window.</p>
+          </div>
+        </li>
+        <li>
+          <span class="step-num">3</span>
+          <div>
+            <h3>Pair your iPhone</h3>
+            <p>Install the iOS app, tap <em>Scan QR</em>, and point it at the QR code in NetMon Server's setup window. Pairing stays on your LAN.</p>
+          </div>
+        </li>
+      </ol>
+    </section>
 
-  <section class="links">
-    <h2>Source &amp; support</h2>
-    <ul>
-      <li><a href="https://github.com/gbellas/netmon-server">Server source on GitHub</a></li>
-      <li><a href="https://github.com/gbellas/netmon-app">iOS app source on GitHub</a></li>
-      <li><a href="https://github.com/gbellas/netmon-server/issues">Report a bug</a></li>
-    </ul>
-  </section>
+    <section class="ios" aria-labelledby="ios-heading">
+      <h2 id="ios-heading">Get the iOS app</h2>
+      <p>NetMon's iPhone and iPad app is distributed through TestFlight while we finalize the App Store release.</p>
+      <div class="cta">
+        <a class="btn primary" href="TESTFLIGHT_URL_TBD">Join the TestFlight beta</a>
+        <a class="btn secondary" href="APP_STORE_URL_TBD">App Store (coming soon)</a>
+      </div>
+    </section>
+
+    <section class="monitors" aria-labelledby="monitors-heading">
+      <h2 id="monitors-heading">What it monitors</h2>
+      <ul class="bullets">
+        <li>UniFi Dream Machine (UDM / UDM-Pro / UDM-SE)</li>
+        <li>Peplink routers — Balance, BR1 Pro, MAX Transit, and other SpeedFusion gear</li>
+        <li>InControl 2 cloud (optional OAuth, read-only)</li>
+        <li>Any ICMP host — custom ping targets with per-target thresholds</li>
+      </ul>
+    </section>
+
+    <section class="notmac" aria-labelledby="notmac-heading">
+      <h2 id="notmac-heading">Not a Mac user?</h2>
+      <p>A Linux / Docker port is <a href="https://github.com/gbellas/netmon-server/issues">tracked in GitHub issues</a> but isn't shipping yet. The macOS menu-bar app is the only supported server today.</p>
+    </section>
+
+    <section class="faq" aria-labelledby="faq-heading">
+      <h2 id="faq-heading">FAQ</h2>
+      <dl>
+        <dt>Does NetMon send anything to me or Anthropic?</dt>
+        <dd>No. NetMon runs entirely on your hardware. There is no telemetry, no analytics, and no remote server.</dd>
+
+        <dt>What credentials does it need?</dt>
+        <dd>Local admin credentials for your router (UniFi, Peplink, etc.), stored in the macOS Keychain. InControl 2 cloud polling is optional and uses OAuth.</dd>
+
+        <dt>Does it cost anything?</dt>
+        <dd>No. NetMon is free and MIT-licensed. The iOS app is free on the App Store.</dd>
+
+        <dt>Where do I get support?</dt>
+        <dd>Open an issue on <a href="https://github.com/gbellas/netmon-server/issues">GitHub</a>. This is a hobby project — response times vary but every report gets read.</dd>
+      </dl>
+    </section>
+  </main>
 
   <footer>
-    <p>NetMon is a hobby project. No telemetry, no ads, no accounts.</p>
+    <p>
+      <a href="https://github.com/gbellas/netmon-server">GitHub</a>
+      &nbsp;&middot;&nbsp;
+      <a href="https://github.com/gbellas/netmon-server/blob/main/LICENSE">MIT License</a>
+    </p>
+    <p class="tiny">&copy; 2026 Gabriel Bellas &middot; MIT License</p>
   </footer>
 </body>
 </html>

@@ -1,12 +1,18 @@
 # Release workflow: tag-triggered, builds + signs + notarizes + staples the
 # NetMon menu-bar app, then creates a GitHub Release and attaches the DMG.
 #
-# Required repo secrets (Settings → Secrets → Actions):
+# Triggers:
+#   - Push a tag matching `v*` (e.g. `v1.0.0`) — creates a real release.
+#   - Manual dispatch via the Actions UI — dry run; builds + uploads DMG as
+#     a workflow artifact but does NOT create a Release.
+#
+# Required repo secrets (Settings → Secrets and variables → Actions):
 #   DEVELOPER_ID_CERT_P12_BASE64  — base64-encoded Developer ID Application .p12
 #   DEVELOPER_ID_CERT_PASSWORD    — the .p12 export password
 #   ASC_KEY_BASE64                — base64-encoded App Store Connect API key (.p8)
-#   ASC_KEY_ID                    — the API key id
-#   ASC_ISSUER_ID                 — the App Store Connect issuer id
+#   ASC_KEY_ID                    — the API key id (10-char alphanumeric)
+#   ASC_ISSUER_ID                 — the App Store Connect issuer id (UUID)
+#   DEV_TEAM_ID                   — Apple Developer Team ID (10-char)
 #
 # GITHUB_TOKEN is provided automatically by Actions and is used for the
 # softprops/action-gh-release step.
@@ -17,6 +23,12 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      dry_run_tag:
+        description: "Fake tag label to use for dry-run artifact naming (e.g. v0.0.0-dryrun)"
+        required: false
+        default: "v0.0.0-dryrun"
 
 permissions:
   contents: write
@@ -24,10 +36,49 @@ permissions:
 jobs:
   release:
     runs-on: macos-14
+    env:
+      DEV_TEAM_ID: ${{ secrets.DEV_TEAM_ID }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Resolve version + previous tag
+        id: version
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF_TYPE:-}" = "tag" ]; then
+            CURRENT_TAG="${GITHUB_REF_NAME}"
+          else
+            CURRENT_TAG="${{ github.event.inputs.dry_run_tag }}"
+          fi
+          PREV_TAG=$(git describe --tags --abbrev=0 "${CURRENT_TAG}^" 2>/dev/null || echo "")
+          echo "current_tag=${CURRENT_TAG}" >> "$GITHUB_OUTPUT"
+          echo "prev_tag=${PREV_TAG}"       >> "$GITHUB_OUTPUT"
+          echo "Current: ${CURRENT_TAG}  Prev: ${PREV_TAG}"
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          set -euo pipefail
+          CUR='${{ steps.version.outputs.current_tag }}'
+          PREV='${{ steps.version.outputs.prev_tag }}'
+          {
+            echo "## NetMon Server ${CUR}"
+            echo
+            echo "### Changes"
+            if [ -n "$PREV" ]; then
+              git log --oneline "${PREV}..${CUR}" 2>/dev/null || git log --oneline -20
+            else
+              git log --oneline -20
+            fi
+            echo
+            echo "### Install"
+            echo "Download \`NetMonServer.dmg\` below, open it, and drag NetMon Server into Applications."
+            echo "Full install + pairing walkthrough: https://gbellas.github.io/netmon-server/"
+          } > /tmp/RELEASE_NOTES.md
+          echo "notes_path=/tmp/RELEASE_NOTES.md" >> "$GITHUB_OUTPUT"
+          cat /tmp/RELEASE_NOTES.md
 
       - name: Import Developer ID signing certificate
         env:
@@ -59,16 +110,26 @@ jobs:
         run: |
           set -euo pipefail
           cd mac-app
-          # Expects a script at mac-app/scripts/build-dmg.sh that produces
-          # dist/NetMonServer.dmg. The existing finish-notarization.sh is
-          # the notarize+staple helper; build-dmg.sh wraps xcodebuild + it.
+          # Expects mac-app/scripts/build-dmg.sh to produce dist/NetMonServer.dmg
+          # (wraps xcodebuild + sign-and-notarize.sh + finish-notarization.sh).
           ./scripts/build-dmg.sh
           ls -la dist/
 
+      - name: Upload DMG as workflow artifact (always)
+        uses: actions/upload-artifact@v4
+        with:
+          name: NetMonServer-${{ steps.version.outputs.current_tag }}
+          path: mac-app/dist/NetMonServer.dmg
+          if-no-files-found: error
+
       - name: Create GitHub Release
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           files: mac-app/dist/NetMonServer.dmg
-          generate_release_notes: true
+          body_path: ${{ steps.changelog.outputs.notes_path }}
+          name: NetMon Server ${{ steps.version.outputs.current_tag }}
+          tag_name: ${{ steps.version.outputs.current_tag }}
+          fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
