@@ -523,22 +523,67 @@ async def _alerts_loop():
 async def startup():
     logger.info("Starting NetMon pollers...")
 
-    # Ping poller
-    ping_cfg = config.get("ping", {})
-    ping_targets = config.get("ping_targets", [])
-    ping_poller = PingPoller(
-        config={"poll_interval": ping_cfg.get("interval", 5), "targets": ping_targets,
-                "count": ping_cfg.get("count", 1), "timeout": ping_cfg.get("timeout", 2)},
-        state=state,
-        ws_manager=ws_manager,
-        bandwidth_meter=bandwidth_meter,
-    )
-    _registered_pollers.append(ping_poller)
-    asyncio.create_task(ping_poller.run())
+    # Driver-based device pollers: any device entry with `kind:` runs
+    # through the DeviceDriver registry. Devices without `kind:` fall
+    # through to the legacy code path below so existing deployments keep
+    # working without config edits.
+    from pollers.drivers import DRIVERS, DeviceSpec, get_driver
+    for dev_id, raw in config.get("devices", {}).items():
+        if not isinstance(raw, dict) or "kind" not in raw:
+            continue
+        try:
+            spec = DeviceSpec.from_config(dev_id, raw)
+            driver = get_driver(spec.kind)(spec)
+        except (KeyError, ValueError) as e:
+            logger.error(f"driver config error for device '{dev_id}': {e}")
+            continue
+        # Drivers that care about SSH pausing get `pause_state` passed
+        # through. Others ignore the kwarg. The Peplink driver in
+        # particular uses it for the mobile router's SSH ping streamer
+        # (phone-side ICMP replaces it when the phone is on BR1 LAN).
+        new_pollers = driver.build_pollers(
+            state=state,
+            ws_manager=ws_manager,
+            bandwidth_meter=bandwidth_meter,
+            pause_state=ssh_pause,
+        )
+        for p in new_pollers:
+            _registered_pollers.append(p)
+            asyncio.create_task(p.run())
+        logger.info(
+            f"driver {spec.kind} built {len(new_pollers)} "
+            f"poller(s) for device '{dev_id}'"
+        )
 
-    # UniFi UDM poller
+    # ------------------------------------------------------------------
+    # Legacy wiring: everything below targets the author's original YAML
+    # shape (devices named "udm"/"br1"/"balance310" without a `kind:`).
+    # It's preserved so the current deployment keeps working during the
+    # additive refactor; once every device entry has `kind:` set this
+    # section can be deleted outright.
+    # ------------------------------------------------------------------
+
+    # Ping poller (legacy top-level ping_targets). When ping targets
+    # are modeled as an icmp_ping device in the devices: map, this
+    # block is skipped.
+    ping_targets = config.get("ping_targets", [])
+    if ping_targets:
+        ping_cfg = config.get("ping", {})
+        ping_poller = PingPoller(
+            config={"poll_interval": ping_cfg.get("interval", 5),
+                    "targets": ping_targets,
+                    "count": ping_cfg.get("count", 1),
+                    "timeout": ping_cfg.get("timeout", 2)},
+            state=state,
+            ws_manager=ws_manager,
+            bandwidth_meter=bandwidth_meter,
+        )
+        _registered_pollers.append(ping_poller)
+        asyncio.create_task(ping_poller.run())
+
+    # UniFi UDM poller (legacy shape: device id "udm", no `kind:`)
     udm_cfg = config.get("devices", {}).get("udm")
-    if udm_cfg and udm_cfg.get("host"):
+    if udm_cfg and udm_cfg.get("host") and "kind" not in udm_cfg:
         udm_poller = UniFiPoller(
             config=udm_cfg,
             state=state,
@@ -551,7 +596,7 @@ async def startup():
     # Peplink Balance 310 - derived poller (InControl-managed, no direct API)
     bal_cfg = config.get("devices", {}).get("balance310")
     br1_cfg = config.get("devices", {}).get("br1")
-    if bal_cfg and bal_cfg.get("host"):
+    if bal_cfg and bal_cfg.get("host") and "kind" not in bal_cfg:
         ping_key = "ping." + bal_cfg["host"].replace(".", "_")
         # Tunnel ping = ping to BR1's LAN IP, which traverses the SpeedFusion tunnel
         tunnel_ping_key = "ping." + (br1_cfg["host"] if br1_cfg else "").replace(".", "_")
@@ -600,9 +645,9 @@ async def startup():
             _registered_pollers.append(bal_ssh_poller)
             asyncio.create_task(bal_ssh_poller.run())
 
-    # Peplink BR1 Pro 5G poller
+    # Peplink BR1 Pro 5G poller (legacy — skipped if device has `kind:`)
     br1_cfg = config.get("devices", {}).get("br1")
-    if br1_cfg and br1_cfg.get("host"):
+    if br1_cfg and br1_cfg.get("host") and "kind" not in br1_cfg:
         br1_poller = PeplinkPoller(
             name="br1",
             device_name="BR1 Pro 5G",
