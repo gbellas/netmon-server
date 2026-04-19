@@ -939,44 +939,122 @@ ROAMLINK_CARRIERS = {
 
 @app.post("/api/control/br1/sf/enable")
 async def control_br1_sf_enable(body: SfEnableBody):
-    """Toggle the BR1's SpeedFusion profile. Disabled = tunnel down, traffic
-    goes direct via WANs (subject to outbound policy)."""
-    ctrl = _get_controller("br1")
-    res = await ctrl.set_sf_profile_enable(body.profile_id, body.enable)
-    await ctrl.apply_config()
-    return {"ok": True, "enable": body.enable, "result": res}
+    """DEPRECATED. Use POST /api/devices/br1/control/sf_enable.
+
+    Kept as an alias so the legacy JS frontend and older app builds
+    keep working while the iOS app migrates to per-device endpoints."""
+    logger.warning(
+        "deprecated: /api/control/br1/sf/enable — use "
+        "/api/devices/{id}/control/sf_enable"
+    )
+    return await device_control_sf_enable(
+        "br1", _DeviceSfEnableBody(enabled=body.enable, profile_id=body.profile_id),
+    )
 
 
 @app.post("/api/control/br1/rat")
 async def control_br1_rat(body: RatBody):
-    """Lock BR1 cellular modem to a specific RAT (LTE-only, 3G-only, Auto, etc.).
-    Triggers an immediate reconnect so the change takes effect."""
-    valid = {"auto", "LTE", "LTE+3G", "3G+2G", "3G", "2G", "3G_2G", "2G_3G"}
-    if body.mode not in valid:
-        raise HTTPException(400, f"Invalid mode '{body.mode}'. Valid: {', '.join(sorted(valid))}")
-    ctrl = _get_controller("br1")
-    res = await ctrl.set_cellular_rat_and_reconnect(body.mode)
-    return {"ok": True, "mode": body.mode, "result": res}
+    """DEPRECATED. Use POST /api/devices/br1/control/rat."""
+    logger.warning(
+        "deprecated: /api/control/br1/rat — use "
+        "/api/devices/{id}/control/rat"
+    )
+    return await device_control_rat(
+        "br1", _DeviceRatBody(wan_index=2, rat=body.mode),
+    )
 
 
 @app.post("/api/control/br1/carrier")
 async def control_br1_carrier(body: CarrierBody):
-    """Switch RoamLink eSIM carrier AND force the modem to re-register immediately.
+    """DEPRECATED. Use POST /api/devices/br1/control/carrier."""
+    logger.warning(
+        "deprecated: /api/control/br1/carrier — use "
+        "/api/devices/{id}/control/carrier"
+    )
+    return await device_control_carrier(
+        "br1", _DeviceCarrierBody(wan_index=2, carrier=body.carrier),
+    )
 
-    Without the forced reconnect the modem would keep its current connection and
-    only honor the new preference on the next natural reconnect cycle (could be
-    hours or never), making the UI look broken. We disable/enable the cellular
-    WAN right after saving the preference, which triggers an immediate re-scan."""
-    ctrl = _get_controller("br1")
-    key = body.carrier.lower().strip()
-    if key == "auto":
-        res = await ctrl.set_roamlink_auto_and_reconnect()
-    elif key in ROAMLINK_CARRIERS:
-        c = ROAMLINK_CARRIERS[key]
-        res = await ctrl.set_roamlink_carrier_and_reconnect(c["mcc"], c["mnc"], c["name"])
-    else:
-        raise HTTPException(400, f"Unknown carrier '{body.carrier}'. Use: verizon, att, tmobile, auto")
+
+# ---- Generic driver-backed control endpoints ----------------------------
+#
+# These parameterize on the device id so a Peplink router with any
+# `devices.<id>` key (not just the legacy "br1") gets the same carrier /
+# RAT / SpeedFusion controls via the dashboard. Each returns HTTP 501 if
+# the device's driver kind doesn't support the operation (today: anything
+# other than peplink_router).
+
+class _DeviceCarrierBody(BaseModel):
+    # wan_index currently ignored by the driver (RoamLink is always the
+    # cellular WAN = WAN 2 on BR1 Pro 5G) but accepted so the API shape
+    # scales to future multi-modem routers without a breaking change.
+    wan_index: int = 2
+    carrier:   str
+
+
+class _DeviceRatBody(BaseModel):
+    wan_index: int = 2
+    rat:       str
+
+
+class _DeviceSfEnableBody(BaseModel):
+    enabled:    bool
+    profile_id: int = 1
+
+
+def _require_peplink_driver(dev_id: str):
+    """Look up the running driver and confirm it's a peplink_router. Raises
+    404 if no driver is registered, 501 if the kind is unsupported."""
+    driver = _device_drivers.get(dev_id)
+    if driver is None:
+        raise HTTPException(404, f"no running driver for device {dev_id!r}")
+    if getattr(driver, "kind", None) != "peplink_router":
+        raise HTTPException(
+            501,
+            f"device kind {getattr(driver, 'kind', '?')!r} does not "
+            "support cellular / SpeedFusion controls",
+        )
+    return driver
+
+
+@app.post("/api/devices/{dev_id}/control/carrier")
+async def device_control_carrier(dev_id: str, body: _DeviceCarrierBody):
+    driver = _require_peplink_driver(dev_id)
+    try:
+        res = await driver.set_carrier(body.carrier)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    logger.info(
+        f"driver {type(driver).__name__} device {dev_id!r} "
+        f"carrier → {body.carrier}"
+    )
     return {"ok": True, "carrier": body.carrier, "result": res}
+
+
+@app.post("/api/devices/{dev_id}/control/rat")
+async def device_control_rat(dev_id: str, body: _DeviceRatBody):
+    driver = _require_peplink_driver(dev_id)
+    try:
+        res = await driver.set_rat(body.rat)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    logger.info(
+        f"driver {type(driver).__name__} device {dev_id!r} "
+        f"RAT → {body.rat}"
+    )
+    return {"ok": True, "rat": body.rat, "mode": body.rat, "result": res}
+
+
+@app.post("/api/devices/{dev_id}/control/sf_enable")
+async def device_control_sf_enable(dev_id: str, body: _DeviceSfEnableBody):
+    driver = _require_peplink_driver(dev_id)
+    res = await driver.set_sf_enable(body.enabled, profile_id=body.profile_id)
+    logger.info(
+        f"driver {type(driver).__name__} device {dev_id!r} "
+        f"SF profile {body.profile_id} → {body.enabled}"
+    )
+    return {"ok": True, "enable": body.enabled, "enabled": body.enabled,
+            "result": res}
 
 
 @app.post("/api/control/udm/wan/{wan_id}/speedtest")
@@ -1454,6 +1532,76 @@ async def update_settings(body: _SettingsBody):
         "requires_restart": deferred,
         "current": _settings_view(),
     }
+
+
+# ---- Dashboard layout sync --------------------------------------------
+#
+# Persists the user's dashboard widget/device ordering + visibility in
+# config.yaml under `dashboard.layout`. The iOS app was previously
+# UserDefaults-only here, which meant a second device (or a reinstall)
+# lost the user's arrangement. Treating it as server-owned config makes
+# "everything on the dashboard is configurable" actually true across
+# devices — and it's a tiny payload, so putting it in config.yaml next
+# to the rest of the server config is justified.
+#
+# Shape:
+#   {
+#     "device_order":   ["br1", "udm", ...],    # ids, user-chosen order
+#     "hidden":         ["ic2", ...],           # device ids to hide
+#     "widget_order":   ["udm", "br1", ...],    # built-in WidgetID rawValues
+#     "widget_hidden":  ["eventLog"],
+#   }
+#
+# Missing or partially-missing blocks default to [] — which the app
+# interprets as "use the built-in default order."
+
+
+class _DashboardLayoutBody(BaseModel):
+    device_order:  list[str] | None = None
+    hidden:        list[str] | None = None
+    widget_order:  list[str] | None = None
+    widget_hidden: list[str] | None = None
+
+
+def _dashboard_layout_view() -> dict:
+    """Project config.yaml's dashboard.layout subtree down to the API
+    shape. Always returns all four keys (with empty lists as defaults)
+    so the iOS client can decode without special-casing first-run."""
+    raw = (config.get("dashboard") or {}).get("layout") or {}
+    def _as_list(v) -> list[str]:
+        if isinstance(v, list):
+            return [str(x) for x in v]
+        return []
+    return {
+        "device_order":  _as_list(raw.get("device_order")),
+        "hidden":        _as_list(raw.get("hidden")),
+        "widget_order":  _as_list(raw.get("widget_order")),
+        "widget_hidden": _as_list(raw.get("widget_hidden")),
+    }
+
+
+@app.get("/api/dashboard/layout")
+async def get_dashboard_layout():
+    return _dashboard_layout_view()
+
+
+@app.put("/api/dashboard/layout")
+async def update_dashboard_layout(body: _DashboardLayoutBody):
+    """Full-replace PUT. Omitted keys are treated as "leave existing value
+    alone" (not "clear"), so the app can send partial updates if it
+    later wants to (e.g. only the device layer changed)."""
+    dashboard = config.setdefault("dashboard", {})
+    layout = dashboard.setdefault("layout", {})
+    if body.device_order is not None:
+        layout["device_order"] = [str(x) for x in body.device_order]
+    if body.hidden is not None:
+        layout["hidden"] = [str(x) for x in body.hidden]
+    if body.widget_order is not None:
+        layout["widget_order"] = [str(x) for x in body.widget_order]
+    if body.widget_hidden is not None:
+        layout["widget_hidden"] = [str(x) for x in body.widget_hidden]
+    _persist_config()
+    return _dashboard_layout_view()
 
 
 async def _alerts_loop():

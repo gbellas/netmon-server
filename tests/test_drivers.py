@@ -498,3 +498,92 @@ class TestSetWanEnabled:
         wan_call = next(c for c in captured
                         if c[0].endswith("config.wan.connection"))
         assert wan_call[1] == {"id": 2, "enable": False}
+
+
+# ---- Peplink driver: carrier / RAT / SF control contracts --------------
+#
+# Each test swaps the driver's internal PeplinkController with a stub
+# that records the call. We assert the method the endpoint is expected
+# to invoke gets called with the right args — this is the contract the
+# /api/devices/{id}/control/* endpoints rely on.
+
+
+class _StubController:
+    """Captures the high-level controller methods called by the driver."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, tuple, dict]] = []
+
+    async def set_roamlink_auto_and_reconnect(self) -> dict:
+        self.calls.append(("auto", (), {}))
+        return {"carrier": "ok", "reconnect": {"disable": "ok", "enable": "ok"}}
+
+    async def set_roamlink_carrier_and_reconnect(
+        self, mcc: str, mnc: str, name: str,
+    ) -> dict:
+        self.calls.append(("carrier", (mcc, mnc, name), {}))
+        return {"carrier": "ok", "reconnect": {"disable": "ok", "enable": "ok"}}
+
+    async def set_cellular_rat_and_reconnect(self, mode: str) -> dict:
+        self.calls.append(("rat", (mode,), {}))
+        return {"rat": "ok", "reconnect": {"disable": "ok", "enable": "ok"}}
+
+    async def set_sf_profile_enable(self, profile_id: int, enable: bool) -> dict:
+        self.calls.append(("sf", (profile_id, enable), {}))
+        return {"stat": "ok"}
+
+    async def apply_config(self) -> dict:
+        self.calls.append(("apply", (), {}))
+        return {"stat": "ok"}
+
+
+class TestPeplinkRouterControlAPI:
+    def _driver_with_stub(self) -> tuple[PeplinkRouterDriver, _StubController]:
+        spec = DeviceSpec.from_config(
+            "edge",
+            {"kind": "peplink_router", "host": "1.1.1.1", "username": "a"},
+        )
+        drv = PeplinkRouterDriver(spec)
+        stub = _StubController()
+        drv._controller = stub  # type: ignore[assignment]
+        return drv, stub
+
+    def test_set_carrier_auto_dispatches_to_auto_reconnect(self) -> None:
+        import asyncio as _asyncio
+        drv, stub = self._driver_with_stub()
+        _asyncio.run(drv.set_carrier("auto"))
+        assert [c[0] for c in stub.calls] == ["auto"]
+
+    def test_set_carrier_verizon_translates_plmn(self) -> None:
+        import asyncio as _asyncio
+        drv, stub = self._driver_with_stub()
+        _asyncio.run(drv.set_carrier("Verizon"))  # case-insensitive
+        assert stub.calls[0][0] == "carrier"
+        mcc, mnc, name = stub.calls[0][1]
+        assert (mcc, mnc, name) == ("311", "480", "Verizon")
+
+    def test_set_carrier_unknown_raises(self) -> None:
+        import asyncio as _asyncio
+        drv, _ = self._driver_with_stub()
+        with pytest.raises(ValueError, match="Unknown carrier"):
+            _asyncio.run(drv.set_carrier("sprint"))
+
+    def test_set_rat_valid_passes_through(self) -> None:
+        import asyncio as _asyncio
+        drv, stub = self._driver_with_stub()
+        _asyncio.run(drv.set_rat("LTE"))
+        assert stub.calls[0] == ("rat", ("LTE",), {})
+
+    def test_set_rat_invalid_raises(self) -> None:
+        import asyncio as _asyncio
+        drv, _ = self._driver_with_stub()
+        with pytest.raises(ValueError, match="Invalid mode"):
+            _asyncio.run(drv.set_rat("6G"))
+
+    def test_set_sf_enable_toggles_and_applies(self) -> None:
+        import asyncio as _asyncio
+        drv, stub = self._driver_with_stub()
+        _asyncio.run(drv.set_sf_enable(False, profile_id=1))
+        names = [c[0] for c in stub.calls]
+        assert names == ["sf", "apply"]
+        assert stub.calls[0][1] == (1, False)

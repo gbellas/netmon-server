@@ -35,6 +35,28 @@ from .base import DeviceSpec
 from ..peplink import PeplinkPoller
 from ..br1_ssh_ping import PeplinkSshPingPoller
 
+# Lazy import to avoid pulling controls.py (and its fastapi dependency)
+# into the driver module during test collection.
+def _make_controller(spec: DeviceSpec) -> Any:
+    """Build a PeplinkController bound to this device's host/creds.
+
+    OAuth credentials are resolved from the environment using the
+    per-device prefix `NETMON_<ID_UPPER>_OAUTH_CLIENT_ID/SECRET`, which
+    matches server.py's `_get_controller` so users can keep their
+    existing env vars for the `br1` device id.
+    """
+    import os
+    from controls import PeplinkController
+    env_prefix = f"NETMON_{spec.id.upper()}_OAUTH"
+    return PeplinkController(
+        host=spec.host,
+        username=spec.username or "admin",
+        password=spec.password or "",
+        verify_ssl=spec.verify_ssl,
+        oauth_client_id=os.environ.get(f"{env_prefix}_CLIENT_ID"),
+        oauth_client_secret=os.environ.get(f"{env_prefix}_CLIENT_SECRET"),
+    )
+
 
 class PeplinkRouterDriver:
     kind = "peplink_router"
@@ -64,6 +86,12 @@ class PeplinkRouterDriver:
         # its authenticated aiohttp session for WAN toggle requests so
         # we don't force a second login round-trip per click.
         self._rest_poller: PeplinkPoller | None = None
+
+        # Lazily-constructed PeplinkController used for the higher-level
+        # control endpoints (carrier / RAT / SF enable). Kept separate
+        # from the REST poller's session because PeplinkController owns
+        # its own OAuth token + cookie jar lifecycle.
+        self._controller: Any | None = None
 
     def build_pollers(
         self,
@@ -226,6 +254,55 @@ class PeplinkRouterDriver:
             except Exception:
                 pass
             return data
+
+    def _get_controller(self) -> Any:
+        """Return a memoized PeplinkController scoped to this device."""
+        if self._controller is None:
+            self._controller = _make_controller(self.spec)
+        return self._controller
+
+    async def set_carrier(self, carrier: str) -> dict:
+        """Switch RoamLink eSIM carrier and force an immediate re-register.
+        Accepts "verizon" / "att" / "tmobile" / "auto"."""
+        # Local import to avoid a top-level dependency on the server's
+        # CARRIERS constant (which also pulls HTTPException via controls).
+        carriers = {
+            "verizon": {"mcc": "311", "mnc": "480", "name": "Verizon"},
+            "att":     {"mcc": "310", "mnc": "410", "name": "AT&T"},
+            "tmobile": {"mcc": "310", "mnc": "260", "name": "T-Mobile"},
+        }
+        key = carrier.lower().strip()
+        ctrl = self._get_controller()
+        if key == "auto":
+            return await ctrl.set_roamlink_auto_and_reconnect()
+        if key in carriers:
+            c = carriers[key]
+            return await ctrl.set_roamlink_carrier_and_reconnect(
+                c["mcc"], c["mnc"], c["name"],
+            )
+        raise ValueError(
+            f"Unknown carrier '{carrier}'. Use: verizon, att, tmobile, auto"
+        )
+
+    async def set_rat(self, mode: str) -> dict:
+        """Lock cellular Radio Access Technology and force an immediate
+        re-registration. Accepts "auto" / "LTE" / "LTE+3G" / "3G" / ..."""
+        valid = {"auto", "LTE", "LTE+3G", "3G+2G", "3G", "2G",
+                 "3G_2G", "2G_3G"}
+        if mode not in valid:
+            raise ValueError(
+                f"Invalid mode '{mode}'. Valid: {', '.join(sorted(valid))}"
+            )
+        ctrl = self._get_controller()
+        return await ctrl.set_cellular_rat_and_reconnect(mode)
+
+    async def set_sf_enable(self, enabled: bool, profile_id: int = 1) -> dict:
+        """Toggle a SpeedFusion profile on/off. profile_id defaults to 1
+        which matches the BR1's primary tunnel in the default config."""
+        ctrl = self._get_controller()
+        res = await ctrl.set_sf_profile_enable(int(profile_id), bool(enabled))
+        await ctrl.apply_config()
+        return res
 
     @staticmethod
     def _default_key_prefixes(device_id: str) -> dict[str, str]:
