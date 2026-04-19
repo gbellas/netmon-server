@@ -246,6 +246,98 @@ class TestE2E:
         status, body = _post(f"{base}/api/config/import", tok, ok)
         assert status == 200
 
+    def test_device_crud_roundtrip(self, server):
+        base, tok = server
+
+        # POST a new icmp_ping device
+        new_body = {
+            "id": "extra",
+            "config": {
+                "kind": "icmp_ping",
+                "name": "Extra pings",
+                "targets": [{"host": "1.1.1.1", "name": "cf"}],
+            },
+        }
+        status, body = _post(f"{base}/api/devices", tok, new_body)
+        assert status == 200, body
+        doc = json.loads(body)
+        assert doc["id"] == "extra"
+        assert doc["pollers_started"] == 1
+
+        # GET /api/devices should now include it
+        _, body = _get(f"{base}/api/devices", token=tok)
+        ids = {d["id"] for d in json.loads(body)["devices"]}
+        assert "extra" in ids
+
+        # PUT with an updated config (different display name)
+        updated = dict(new_body)
+        updated["config"] = {**updated["config"], "name": "Renamed"}
+        status, body = _post(f"{base}/api/devices/extra", tok, updated)
+        # fastapi treats the extra path segment as PUT only; POST
+        # to the nested path would 405. We're reusing the test helper
+        # which always POSTs, so do a raw PUT via http.client below.
+        import http.client, urllib.parse
+        u = urllib.parse.urlparse(f"{base}/api/devices/extra")
+        c = http.client.HTTPConnection(u.netloc, timeout=5)
+        c.request("PUT", u.path,
+                  body=json.dumps(updated),
+                  headers={"Authorization": f"Bearer {tok}",
+                           "Content-Type": "application/json"})
+        r = c.getresponse(); rb = r.read().decode()
+        assert r.status == 200, rb
+
+        _, body = _get(f"{base}/api/devices", token=tok)
+        renamed = next(d for d in json.loads(body)["devices"]
+                       if d["id"] == "extra")
+        assert renamed["display_name"] == "Renamed"
+
+        # DELETE
+        c = http.client.HTTPConnection(u.netloc, timeout=5)
+        c.request("DELETE", u.path,
+                  headers={"Authorization": f"Bearer {tok}"})
+        r = c.getresponse(); rb = r.read().decode()
+        assert r.status == 200, rb
+
+        _, body = _get(f"{base}/api/devices", token=tok)
+        ids = {d["id"] for d in json.loads(body)["devices"]}
+        assert "extra" not in ids
+
+    def test_device_post_rejects_bad_id(self, server):
+        base, tok = server
+        # Uppercase + reserved chars → 400
+        for bad in ["UPPER", "with space", "-startsdash", "a" * 33, ""]:
+            status, _ = _post(
+                f"{base}/api/devices", tok,
+                {"id": bad,
+                 "config": {"kind": "icmp_ping",
+                            "targets": [{"host": "1.1.1.1"}]}},
+            )
+            assert status == 400, f"expected 400 for id={bad!r}"
+
+    def test_device_post_rejects_duplicate_id(self, server):
+        base, tok = server
+        # "pings" exists from the fixture; posting again → 409.
+        status, body = _post(
+            f"{base}/api/devices", tok,
+            {"id": "pings",
+             "config": {"kind": "icmp_ping",
+                        "targets": [{"host": "1.1.1.1"}]}},
+        )
+        assert status == 409, body
+
+    def test_device_put_requires_existing(self, server):
+        base, tok = server
+        import http.client, urllib.parse
+        u = urllib.parse.urlparse(f"{base}/api/devices/nonexistent")
+        c = http.client.HTTPConnection(u.netloc, timeout=5)
+        c.request("PUT", u.path,
+                  body=json.dumps({"config": {"kind": "icmp_ping",
+                      "targets": [{"host": "1.1.1.1"}]}}),
+                  headers={"Authorization": f"Bearer {tok}",
+                           "Content-Type": "application/json"})
+        r = c.getresponse(); r.read()
+        assert r.status == 404
+
     def test_ssh_pause_lease(self, server):
         base, tok = server
         # Initially not paused.

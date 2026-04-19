@@ -111,6 +111,84 @@ async def _auth_middleware(request, call_next):
 # health. Populated at startup, drained at shutdown.
 _registered_pollers: list = []
 
+# Per-device (id → list[asyncio.Task]) map for hot-reload. When a client
+# POSTs to /api/devices we spin up the driver's pollers and stash their
+# Tasks here; on PUT/DELETE we cancel the old ones first. Driver
+# devices only — legacy-shaped entries are started at boot via the
+# fallback path below and aren't tracked here.
+_device_tasks: dict[str, list] = {}
+
+
+def _start_driver_device(dev_id: str, raw: dict) -> tuple[int, str]:
+    """Build + start the pollers for a single driver-backed device.
+
+    Returns (poller_count, error). On error, (0, message); poller_count
+    is zero and nothing is scheduled.
+
+    Called from both startup (for pre-existing devices) and the
+    POST/PUT endpoints (for runtime additions).
+    """
+    from pollers.drivers import DeviceSpec, get_driver
+    try:
+        spec = DeviceSpec.from_config(dev_id, raw)
+        driver = get_driver(spec.kind)(spec)
+    except (KeyError, ValueError) as e:
+        return 0, str(e)
+    new_pollers = driver.build_pollers(
+        state=state,
+        ws_manager=ws_manager,
+        bandwidth_meter=bandwidth_meter,
+        pause_state=ssh_pause,
+    )
+    tasks = []
+    for p in new_pollers:
+        _registered_pollers.append(p)
+        tasks.append(asyncio.create_task(p.run()))
+    _device_tasks[dev_id] = tasks
+    return len(new_pollers), ""
+
+
+def _stop_driver_device(dev_id: str) -> int:
+    """Cancel all running pollers for a device and clear its state-key
+    namespace. Returns the number of tasks that were cancelled.
+
+    Safe to call for unknown ids (no-op). Does NOT touch config on disk
+    — callers do that separately."""
+    tasks = _device_tasks.pop(dev_id, [])
+    for t in tasks:
+        t.cancel()
+    # Drop the device's state entries (`<id>.*` keys) so the dashboard
+    # doesn't keep rendering stale data after removal. We also drop
+    # sibling namespaces like `<id>_internet.*` / `<id>_tunnel.*` that
+    # peplink_router uses for per-role SSH ping state.
+    keys_to_drop = [
+        k for k in list(state.get_all().keys())
+        if k == dev_id or k.startswith(f"{dev_id}.")
+        or k.startswith(f"{dev_id}_internet.")
+        or k.startswith(f"{dev_id}_tunnel.")
+    ]
+    if keys_to_drop:
+        state.delete(*keys_to_drop)
+    # Prune the poller registry so /api/health doesn't keep listing
+    # dead pollers.
+    global _registered_pollers
+    _registered_pollers = [
+        p for p in _registered_pollers
+        if not getattr(p, "name", "").startswith(dev_id)
+    ]
+    return len(tasks)
+
+
+def _persist_config() -> None:
+    """Atomically rewrite config.local.yaml with the current in-memory
+    `config` dict. Preserves the 0600 perms we rely on for secrets."""
+    import yaml as _yaml
+    target = Path(__file__).parent / "config.local.yaml"
+    tmp = target.with_suffix(".tmp")
+    tmp.write_text(_yaml.safe_dump(config, default_flow_style=False))
+    tmp.chmod(0o600)
+    tmp.replace(target)
+
 
 @app.get("/api/health")
 async def health():
@@ -219,6 +297,149 @@ async def list_driver_kinds():
     'Add device' wizard uses this to populate the kind dropdown."""
     from pollers.drivers import DRIVERS
     return JSONResponse({"kinds": sorted(DRIVERS.keys())})
+
+
+# ---- Device CRUD --------------------------------------------------------
+#
+# Writes persist to config.local.yaml (the operator's gitignored copy)
+# and hot-start / hot-stop the relevant pollers. No server restart
+# needed — the client gets back the updated device list immediately
+# and the dashboard fills with fresh state as soon as the driver's
+# first poll lands.
+#
+# Legacy-shaped devices (no `kind:` in config) can't be edited through
+# this API — they need to be rewritten with a `kind:` field first. The
+# app surfaces a "legacy" chip so users know to migrate.
+
+class _DeviceBody(BaseModel):
+    """Payload for POST/PUT on /api/devices.
+
+    `id` is the state-key prefix and config dict key. Required on POST,
+    ignored on PUT (PUT uses the URL path segment for identity).
+    `config` is the full per-device YAML dict — kind, host, username,
+    password, and any driver-specific keys under `extra`.
+    """
+    id: str | None = None
+    config: dict
+
+
+def _validate_device_config(dev_id: str, raw: dict) -> None:
+    """Raise HTTPException(400) if the device dict isn't something we
+    could spin up a driver for. Used before writing to disk so a bad
+    POST doesn't leave config.local.yaml half-edited."""
+    from pollers.drivers import DeviceSpec, get_driver
+    if not isinstance(raw, dict):
+        raise HTTPException(400, "device config must be an object")
+    if "kind" not in raw:
+        raise HTTPException(
+            400,
+            "device config must include a `kind:` field. "
+            f"GET /api/driver-kinds for valid values."
+        )
+    try:
+        spec = DeviceSpec.from_config(dev_id, raw)
+        # Instantiate to trigger driver-level required-field checks
+        # (missing host, missing username, etc.) without starting any tasks.
+        get_driver(spec.kind)(spec)
+    except KeyError as e:
+        raise HTTPException(400, f"unknown device kind: {e}")
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+_ID_RE = __import__("re").compile(r"^[a-z][a-z0-9_]{0,31}$")
+
+
+@app.post("/api/devices")
+async def add_device(body: _DeviceBody):
+    """Create a new device entry in config.local.yaml and start its
+    pollers immediately. Rejects duplicate ids and malformed configs.
+
+    Device id constraints: lowercase, alphanumeric + underscore, 1-32
+    chars, first char a letter. Restrictive on purpose — the id is used
+    as a state-key prefix + appears in JSON paths, so whitespace /
+    Unicode weirdness would create surprises downstream."""
+    # Validate exactly what the client sent (no silent normalization):
+    # if they hand us "UPPER" it's a bug in their form, not something
+    # we should quietly coerce.
+    dev_id = (body.id or "").strip()
+    if not _ID_RE.match(dev_id):
+        raise HTTPException(
+            400,
+            "id must be lowercase a-z / 0-9 / _, starting with a letter, "
+            "max 32 chars"
+        )
+    if dev_id in (config.get("devices") or {}):
+        raise HTTPException(409, f"device id {dev_id!r} already exists")
+    _validate_device_config(dev_id, body.config)
+
+    # Commit: update in-memory config, persist to disk, start pollers.
+    # Order matters: if pollers fail to start after a disk write,
+    # the config file is still consistent — restart will try to boot
+    # the same pollers and log the error rather than running stale
+    # state against disk.
+    config.setdefault("devices", {})[dev_id] = body.config
+    _persist_config()
+    count, err = _start_driver_device(dev_id, body.config)
+    if err:
+        # Rollback in-memory + on-disk state; we didn't actually land
+        # a working device.
+        del config["devices"][dev_id]
+        _persist_config()
+        raise HTTPException(500, f"device failed to start: {err}")
+    return {"ok": True, "id": dev_id, "pollers_started": count}
+
+
+@app.put("/api/devices/{dev_id}")
+async def update_device(dev_id: str, body: _DeviceBody):
+    """Replace an existing device's config atomically. Cancels the old
+    pollers, writes the new config, starts fresh pollers.
+
+    Accepts a full config dict — partial updates aren't supported (by
+    design: a PATCH interface would double the validation surface and
+    the UI already has the full object to round-trip)."""
+    devices = config.get("devices") or {}
+    if dev_id not in devices:
+        raise HTTPException(404, f"no device with id {dev_id!r}")
+    # Don't let PUT change the id; that's what DELETE+POST is for.
+    if body.id is not None and body.id != dev_id:
+        raise HTTPException(400, "id cannot be changed via PUT")
+    _validate_device_config(dev_id, body.config)
+
+    # Stop old pollers BEFORE writing the config so a failing restart
+    # doesn't leave two sets running against the same id.
+    _stop_driver_device(dev_id)
+    previous = devices[dev_id]
+    config["devices"][dev_id] = body.config
+    _persist_config()
+    count, err = _start_driver_device(dev_id, body.config)
+    if err:
+        # Roll config back so the next launch isn't broken, and restart
+        # the PREVIOUS pollers so the user isn't left with a dead device.
+        config["devices"][dev_id] = previous
+        _persist_config()
+        _start_driver_device(dev_id, previous)
+        raise HTTPException(500, f"new config failed to start: {err}")
+    return {"ok": True, "id": dev_id, "pollers_started": count}
+
+
+@app.delete("/api/devices/{dev_id}")
+async def delete_device(dev_id: str):
+    """Remove a device: cancel its pollers, drop its state-key namespace,
+    delete the config entry, persist.
+
+    Returns 404 if the device doesn't exist, so clients can distinguish
+    "never existed" from "deleted successfully"."""
+    devices = config.get("devices") or {}
+    if dev_id not in devices:
+        raise HTTPException(404, f"no device with id {dev_id!r}")
+    cancelled = _stop_driver_device(dev_id)
+    del config["devices"][dev_id]
+    _persist_config()
+    # Broadcast the state-key removals so connected clients drop
+    # stale cards without waiting for a reconnect.
+    await ws_manager.broadcast({f"_removed.{dev_id}": True})
+    return {"ok": True, "id": dev_id, "pollers_cancelled": cancelled}
 
 
 @app.get("/api/config/export")
@@ -674,32 +895,15 @@ async def startup():
     # through the DeviceDriver registry. Devices without `kind:` fall
     # through to the legacy code path below so existing deployments keep
     # working without config edits.
-    from pollers.drivers import DRIVERS, DeviceSpec, get_driver
     for dev_id, raw in config.get("devices", {}).items():
         if not isinstance(raw, dict) or "kind" not in raw:
             continue
-        try:
-            spec = DeviceSpec.from_config(dev_id, raw)
-            driver = get_driver(spec.kind)(spec)
-        except (KeyError, ValueError) as e:
-            logger.error(f"driver config error for device '{dev_id}': {e}")
+        count, err = _start_driver_device(dev_id, raw)
+        if err:
+            logger.error(f"driver config error for device '{dev_id}': {err}")
             continue
-        # Drivers that care about SSH pausing get `pause_state` passed
-        # through. Others ignore the kwarg. The Peplink driver in
-        # particular uses it for the mobile router's SSH ping streamer
-        # (phone-side ICMP replaces it when the phone is on BR1 LAN).
-        new_pollers = driver.build_pollers(
-            state=state,
-            ws_manager=ws_manager,
-            bandwidth_meter=bandwidth_meter,
-            pause_state=ssh_pause,
-        )
-        for p in new_pollers:
-            _registered_pollers.append(p)
-            asyncio.create_task(p.run())
         logger.info(
-            f"driver {spec.kind} built {len(new_pollers)} "
-            f"poller(s) for device '{dev_id}'"
+            f"driver {raw['kind']} built {count} poller(s) for '{dev_id}'"
         )
 
     # ------------------------------------------------------------------
