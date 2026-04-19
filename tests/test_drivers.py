@@ -25,6 +25,7 @@ class TestRegistry:
             "peplink_router",
             "unifi_network",
             "icmp_ping",
+            "incontrol",
         }
 
     def test_get_driver_returns_class(self) -> None:

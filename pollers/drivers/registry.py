@@ -21,12 +21,14 @@ from .base import DeviceDriver
 from .peplink_router import PeplinkRouterDriver
 from .unifi_network import UniFiNetworkDriver
 from .icmp_ping import IcmpPingDriver
+from .incontrol import InControlDriver
 
 
 DRIVERS: dict[str, type[DeviceDriver]] = {
     PeplinkRouterDriver.kind:  PeplinkRouterDriver,
     UniFiNetworkDriver.kind:   UniFiNetworkDriver,
     IcmpPingDriver.kind:       IcmpPingDriver,
+    InControlDriver.kind:      InControlDriver,
 }
 
 

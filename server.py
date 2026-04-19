@@ -23,12 +23,10 @@ from fastapi.staticfiles import StaticFiles
 import auth
 from models import AppState
 from ws_manager import WSManager
-from pollers.ping import PingPoller
-from pollers.unifi import UniFiPoller
-from pollers.peplink import PeplinkPoller
-from pollers.derived import Balance310DerivedPoller
-from pollers.br1_ssh_ping import BR1SshPingPoller
-from pollers.incontrol import InControlPoller
+# The concrete poller classes (PingPoller, UniFiPoller, PeplinkPoller,
+# Balance310DerivedPoller, BR1SshPingPoller, InControlPoller) are no
+# longer imported here — they're constructed by driver classes under
+# pollers/drivers/*. server.py only knows the registry.
 from controls import PeplinkController
 from controls_udm import UdmController
 from alerts import AlertsEngine
@@ -57,6 +55,101 @@ if not config_path.exists():
     config_path = _here / "config.yaml"
 with open(config_path) as f:
     config = yaml.safe_load(f)
+
+
+def _migrate_legacy_config(cfg: dict) -> dict:
+    """Rewrite pre-driver config shapes into the generic devices:-with-kind
+    shape, in-memory only (the YAML file on disk is untouched).
+
+    This is how the driver registry becomes the single source of truth:
+    after this function runs, every monitored thing — ping targets,
+    InControl cloud integration, the original hardcoded udm/br1/balance310
+    devices — lives as an entry in `cfg["devices"]` with a `kind:` field.
+    The startup code can then drop every legacy branch and just walk the
+    devices map.
+
+    Three migrations, all idempotent (re-running on an already-migrated
+    config is a no-op):
+
+    1. Devices named "udm" / "br1" / "balance310" without a `kind:` field
+       (the names hardcoded in the author's original deployment) get
+       inferred kinds: udm → unifi_network, br1 → peplink_router with
+       is_mobile=true, balance310 → peplink_router (wired Balance family).
+    2. A non-empty top-level `ping_targets:` list becomes a synthesized
+       icmp_ping device at id "ping_targets", carrying over the `ping:`
+       block's count/timeout/interval defaults.
+    3. `incontrol: {enabled: true, ...}` becomes a synthesized incontrol
+       device at id "incontrol".
+
+    After each migration the source fields are popped so the legacy
+    startup branches become unreachable.
+    """
+    if not isinstance(cfg, dict):
+        return cfg
+
+    devices = cfg.setdefault("devices", {})
+    if not isinstance(devices, dict):
+        # Malformed config — bail rather than silently dropping entries.
+        return cfg
+
+    # 1) Infer `kind:` for the three legacy-named device entries.
+    _legacy_kind_map = {
+        "udm":        {"kind": "unifi_network"},
+        "br1":        {"kind": "peplink_router", "is_mobile": True},
+        "balance310": {"kind": "peplink_router"},
+    }
+    for dev_id, raw in list(devices.items()):
+        if not isinstance(raw, dict):
+            continue
+        if "kind" in raw:
+            continue
+        if dev_id in _legacy_kind_map:
+            inferred = _legacy_kind_map[dev_id]
+            # Preserve every field the operator had — just add `kind:`
+            # (and, for br1, is_mobile if it wasn't set). Never clobber
+            # an explicit is_mobile=false on br1.
+            raw["kind"] = inferred["kind"]
+            if "is_mobile" in inferred and "is_mobile" not in raw:
+                raw["is_mobile"] = inferred["is_mobile"]
+
+    # 2) Top-level ping_targets → synthesized icmp_ping device.
+    ping_targets = cfg.get("ping_targets")
+    if isinstance(ping_targets, list) and ping_targets:
+        ping_cfg = cfg.get("ping") or {}
+        # Don't clobber a user-authored `ping_targets` device entry.
+        if "ping_targets" not in devices:
+            devices["ping_targets"] = {
+                "kind":     "icmp_ping",
+                "name":     "Ping targets",
+                "targets":  ping_targets,
+                "count":    int(ping_cfg.get("count", 1)),
+                "timeout":  int(ping_cfg.get("timeout", 2)),
+                "interval": int(ping_cfg.get("interval", 5)),
+            }
+    # Pop whether or not we migrated — the legacy startup branch should
+    # never see these keys after load-time migration. A user-authored
+    # ping_targets device is preserved because it lives under devices:.
+    cfg.pop("ping_targets", None)
+    cfg.pop("ping", None)
+
+    # 3) Top-level incontrol block → synthesized incontrol device.
+    ic = cfg.get("incontrol")
+    if isinstance(ic, dict) and ic.get("enabled"):
+        if "incontrol" not in devices:
+            devices["incontrol"] = {
+                "kind":          "incontrol",
+                "name":          "InControl 2",
+                "enabled":       True,
+                "org_id":        ic.get("org_id", ""),
+                "poll_interval": int(ic.get("poll_interval", 60)),
+                "event_limit":   int(ic.get("event_limit", 30)),
+            }
+    cfg.pop("incontrol", None)
+
+    return cfg
+
+
+config = _migrate_legacy_config(config)
 
 # Resolve passwords from env vars
 for dev_key, dev_cfg in config.get("devices", {}).items():
@@ -179,6 +272,42 @@ def _stop_driver_device(dev_id: str) -> int:
     return len(tasks)
 
 
+_SECRET_KEYS = ("password", "client_secret", "secret", "auth_token")
+
+
+def _merge_preserving_secrets(previous: dict, incoming: dict) -> dict:
+    """Return `incoming` with any empty-string secret falling back to the
+    value from `previous`.
+
+    Rationale: GET redacts passwords to "" so they never traverse the
+    wire. The editor PUTs the form back verbatim. Without this merge
+    every round-trip would wipe the password. Operators then either
+    have to re-type every secret on every edit (friction) or the
+    client has to track which fields are "sentinel redacted" vs
+    actually-empty (complexity the server is better placed to solve).
+
+    Only empty *strings* trigger the fallback — explicit `null`
+    survives, which is how a caller deliberately clears a password.
+    Recurses into nested dicts (catches `ssh.password`) but NOT into
+    lists; our secrets don't live in list elements.
+    """
+    import copy
+    if not isinstance(incoming, dict) or not isinstance(previous, dict):
+        return copy.deepcopy(incoming)
+
+    merged: dict = {}
+    for k, v in incoming.items():
+        if isinstance(v, dict):
+            merged[k] = _merge_preserving_secrets(previous.get(k) or {}, v)
+        elif k in _SECRET_KEYS and v == "":
+            # Preserve whatever was there before, including if it was
+            # also empty (nothing to preserve = still empty).
+            merged[k] = previous.get(k, "")
+        else:
+            merged[k] = copy.deepcopy(v)
+    return merged
+
+
 def _persist_config() -> None:
     """Atomically rewrite config.local.yaml with the current in-memory
     `config` dict. Preserves the 0600 perms we rely on for secrets."""
@@ -263,51 +392,98 @@ async def list_devices():
     for dev_id, raw in (config.get("devices") or {}).items():
         if not isinstance(raw, dict):
             continue
+        # Post-migration every entry has `kind:` — the legacy fallback
+        # that used to live here is dead (see `_migrate_legacy_config`).
+        kind = raw.get("kind", "unknown")
         capabilities: list[str] = []
-        kind = raw.get("kind")
-        if kind is None:
-            # Legacy entry — surface its implied kind so the client can
-            # still render something sensible.
-            if dev_id == "udm":
-                kind = "legacy_unifi_network"
-            elif dev_id in ("br1", "balance310"):
-                kind = "legacy_peplink_router"
-            else:
-                kind = f"legacy_{dev_id}"
-        if raw.get("ssh", {}).get("enabled"):
+        if (raw.get("ssh") or {}).get("enabled"):
             capabilities.append("ssh_ping")
         if raw.get("wan_carriers"):
             capabilities.append("per_wan_carriers")
         if raw.get("host"):
             capabilities.append("rest")
+        if kind == "icmp_ping":
+            capabilities.append("icmp_ping")
+        if kind == "incontrol":
+            capabilities.append("cloud")
         result.append({
             "id":            dev_id,
             "kind":          kind,
             "display_name":  raw.get("name") or dev_id,
             "host":          raw.get("host", ""),
             "is_mobile":     bool(raw.get("is_mobile", False)),
+            "enabled":       bool(raw.get("enabled", True)),
             "capabilities":  capabilities,
         })
     return JSONResponse({"devices": result})
 
 
-@app.get("/api/devices/{dev_id}")
-async def get_device(dev_id: str):
-    """Return the full config for a single device, with secrets stripped.
+def _device_edit_view(dev_id: str, raw: dict) -> dict:
+    """Produce the full edit-form view of a device's config.
 
-    Used by the iPhone Edit-device form to prefill non-secret fields
-    (ICMP targets, port, SSH config flag, etc.) that the summary
-    endpoint at GET /api/devices deliberately omits. Passwords are
-    ALWAYS redacted on the wire — the editor shows them as blank and
-    the user re-types if they want to change them.
+    The iPhone and web editors need every field a driver *could* read —
+    not just the ones the operator happened to set — so the form can
+    render populated controls for every option. This function:
+
+      1. Deep-copies the raw config so we never mutate config.yaml.
+      2. Fills in defaults for every known field per `kind:` (so a
+         device with no `poll_interval:` in YAML still shows 10 in the
+         form instead of a blank field).
+      3. Redacts secrets. Passwords are replaced with an empty string;
+         the client is expected to re-type only when changing them
+         (PUT preserves the previous password if the empty-string
+         sentinel is sent).
+
+    Kept as a helper so tests can exercise it without spinning up the
+    HTTP stack.
     """
-    devices = config.get("devices") or {}
-    raw = devices.get(dev_id)
-    if raw is None:
-        raise HTTPException(404, f"no device with id {dev_id!r}")
     import copy
     clean = copy.deepcopy(raw)
 
+    kind = clean.get("kind", "")
+
+    # Common fields every driver inspects via DeviceSpec.from_config.
+    # poll_interval is set per-kind below (InControl's default is 60,
+    # not 10) so it isn't filled in here.
+    clean.setdefault("kind",          kind)
+    clean.setdefault("name",          clean.get("name") or dev_id)
+    clean.setdefault("host",          "")
+    clean.setdefault("username",      "")
+    clean.setdefault("password",      "")
+    clean.setdefault("verify_ssl",    False)
+    clean.setdefault("is_mobile",     False)
+    clean.setdefault("wan_carriers",  {})
+
+    # Driver-specific defaults. Kept inline (no per-driver "describe
+    # your fields" hook) because the field set is small and the
+    # benefit of a declarative schema doesn't outweigh the indirection
+    # for four kinds.
+    if kind in ("peplink_router", "unifi_network", "icmp_ping"):
+        clean.setdefault("poll_interval", 10)
+
+    if kind == "peplink_router":
+        ssh = clean.setdefault("ssh", {})
+        ssh.setdefault("enabled",       False)
+        ssh.setdefault("port",          22)
+        ssh.setdefault("username",      clean.get("username", ""))
+        ssh.setdefault("password",      "")
+        ssh.setdefault("targets",       [])
+        ssh.setdefault("count",         5)
+        ssh.setdefault("ssh_timeout",   10)
+        ssh.setdefault("poll_interval", 30)
+    elif kind == "icmp_ping":
+        clean.setdefault("targets",  [])
+        clean.setdefault("count",    1)
+        clean.setdefault("timeout",  2)
+        clean.setdefault("interval", 5)
+    elif kind == "incontrol":
+        clean.setdefault("enabled",       False)
+        clean.setdefault("org_id",        "")
+        clean.setdefault("poll_interval", 60)
+        clean.setdefault("event_limit",   30)
+
+    # Secret redaction, recursive — covers both top-level password and
+    # ssh.password / any driver-specific nested secret.
     def _strip(node: Any) -> None:
         if not isinstance(node, dict):
             return
@@ -317,7 +493,27 @@ async def get_device(dev_id: str):
             else:
                 _strip(node[k])
     _strip(clean)
-    return JSONResponse({"id": dev_id, "config": clean})
+    return clean
+
+
+@app.get("/api/devices/{dev_id}")
+async def get_device(dev_id: str):
+    """Return the full config for a single device, with secrets stripped
+    and every driver-recognized field present (defaults filled in).
+
+    Used by the iPhone Edit-device form to prefill non-secret fields
+    (ICMP targets, port, SSH config flag, etc.) that the summary
+    endpoint at GET /api/devices deliberately omits. Passwords are
+    ALWAYS redacted on the wire — the editor shows them as blank and
+    the user re-types if they want to change them. If the client sends
+    the empty string back on PUT, the server keeps the previously-stored
+    password (see `update_device`).
+    """
+    devices = config.get("devices") or {}
+    raw = devices.get(dev_id)
+    if raw is None:
+        raise HTTPException(404, f"no device with id {dev_id!r}")
+    return JSONResponse({"id": dev_id, "config": _device_edit_view(dev_id, raw)})
 
 
 @app.get("/api/driver-kinds")
@@ -437,11 +633,12 @@ async def update_device(dev_id: str, body: _DeviceBody):
 
     # Stop old pollers BEFORE writing the config so a failing restart
     # doesn't leave two sets running against the same id.
-    _stop_driver_device(dev_id)
     previous = devices[dev_id]
-    config["devices"][dev_id] = body.config
+    merged = _merge_preserving_secrets(previous, body.config)
+    _stop_driver_device(dev_id)
+    config["devices"][dev_id] = merged
     _persist_config()
-    count, err = _start_driver_device(dev_id, body.config)
+    count, err = _start_driver_device(dev_id, merged)
     if err:
         # Roll config back so the next launch isn't broken, and restart
         # the PREVIOUS pollers so the user isn't left with a dead device.
@@ -935,151 +1132,10 @@ async def startup():
             f"driver {raw['kind']} built {count} poller(s) for '{dev_id}'"
         )
 
-    # ------------------------------------------------------------------
-    # Legacy wiring: everything below targets the author's original YAML
-    # shape (devices named "udm"/"br1"/"balance310" without a `kind:`).
-    # It's preserved so the current deployment keeps working during the
-    # additive refactor; once every device entry has `kind:` set this
-    # section can be deleted outright.
-    # ------------------------------------------------------------------
-
-    # Ping poller (legacy top-level ping_targets). When ping targets
-    # are modeled as an icmp_ping device in the devices: map, this
-    # block is skipped.
-    ping_targets = config.get("ping_targets", [])
-    if ping_targets:
-        ping_cfg = config.get("ping", {})
-        ping_poller = PingPoller(
-            config={"poll_interval": ping_cfg.get("interval", 5),
-                    "targets": ping_targets,
-                    "count": ping_cfg.get("count", 1),
-                    "timeout": ping_cfg.get("timeout", 2)},
-            state=state,
-            ws_manager=ws_manager,
-            bandwidth_meter=bandwidth_meter,
-        )
-        _registered_pollers.append(ping_poller)
-        asyncio.create_task(ping_poller.run())
-
-    # UniFi UDM poller (legacy shape: device id "udm", no `kind:`)
-    udm_cfg = config.get("devices", {}).get("udm")
-    if udm_cfg and udm_cfg.get("host") and "kind" not in udm_cfg:
-        udm_poller = UniFiPoller(
-            config=udm_cfg,
-            state=state,
-            ws_manager=ws_manager,
-            bandwidth_meter=bandwidth_meter,
-        )
-        _registered_pollers.append(udm_poller)
-        asyncio.create_task(udm_poller.run())
-
-    # Peplink Balance 310 - derived poller (InControl-managed, no direct API)
-    bal_cfg = config.get("devices", {}).get("balance310")
-    br1_cfg = config.get("devices", {}).get("br1")
-    if bal_cfg and bal_cfg.get("host") and "kind" not in bal_cfg:
-        ping_key = "ping." + bal_cfg["host"].replace(".", "_")
-        # Tunnel ping = ping to BR1's LAN IP, which traverses the SpeedFusion tunnel
-        tunnel_ping_key = "ping." + (br1_cfg["host"] if br1_cfg else "").replace(".", "_")
-        bal_poller = Balance310DerivedPoller(
-            config=bal_cfg,
-            state=state,
-            ws_manager=ws_manager,
-            ping_key=ping_key,
-            tunnel_ping_key=tunnel_ping_key,
-            br1_name="br1",
-        )
-        _registered_pollers.append(bal_poller)
-        asyncio.create_task(bal_poller.run())
-
-        # Balance 310 SSH ping poller — measures tunnel latency from the
-        # home side. Replaces the old BR1→Balance ping, which contended
-        # for BR1's `support ping` lock against the internet pings.
-        bal_ssh_cfg = bal_cfg.get("ssh", {})
-        if bal_ssh_cfg.get("enabled"):
-            bal_ssh_poller_cfg = {
-                "host": bal_cfg["host"],
-                "port": bal_ssh_cfg.get("port", 22),
-                "username": bal_ssh_cfg.get("username", bal_cfg.get("username", "admin")),
-                "password": bal_cfg.get("password", ""),
-                "targets": bal_ssh_cfg.get("targets", []),
-                "ssh_timeout": bal_ssh_cfg.get("ssh_timeout", 10),
-                "poll_interval": bal_ssh_cfg.get("poll_interval", 30),
-            }
-            bal_ssh_poller = BR1SshPingPoller(
-                config=bal_ssh_poller_cfg,
-                state=state,
-                ws_manager=ws_manager,
-                bandwidth_meter=bandwidth_meter,
-                poller_name="balance_ssh",
-                key_prefix_by_role={
-                    "tunnel": "balance_tunnel",
-                },
-                # DO NOT pass `pause_state` here. This poller measures
-                # tunnel latency from the Balance 310 side — phone on
-                # BR1 LAN doesn't replace it, so pausing it would
-                # silently kill tunnel-health visibility whenever the
-                # iPhone signals a pause. The pause lease is intended
-                # only for br1_ssh (which the phone ICMP does replace).
-                pause_state=None,
-            )
-            _registered_pollers.append(bal_ssh_poller)
-            asyncio.create_task(bal_ssh_poller.run())
-
-    # Peplink BR1 Pro 5G poller (legacy — skipped if device has `kind:`)
-    br1_cfg = config.get("devices", {}).get("br1")
-    if br1_cfg and br1_cfg.get("host") and "kind" not in br1_cfg:
-        br1_poller = PeplinkPoller(
-            name="br1",
-            device_name="BR1 Pro 5G",
-            config=br1_cfg,
-            state=state,
-            ws_manager=ws_manager,
-            is_mobile=True,
-            bandwidth_meter=bandwidth_meter,
-        )
-        _registered_pollers.append(br1_poller)
-        asyncio.create_task(br1_poller.run())
-
-        # SSH-based ping poller for BR1 outbound internet monitoring
-        ssh_cfg = br1_cfg.get("ssh", {})
-        if ssh_cfg.get("enabled"):
-            ssh_poller_cfg = {
-                "host": br1_cfg["host"],
-                "port": ssh_cfg.get("port", 22),
-                "username": ssh_cfg.get("username", br1_cfg.get("username", "admin")),
-                "password": br1_cfg.get("password", ""),  # reuse BR1 password
-                "targets": ssh_cfg.get("targets", []),
-                "count": ssh_cfg.get("count", 5),
-                "ssh_timeout": ssh_cfg.get("ssh_timeout", 10),
-                "poll_interval": ssh_cfg.get("poll_interval", 30),
-            }
-            ssh_poller = BR1SshPingPoller(
-                config=ssh_poller_cfg,
-                state=state,
-                ws_manager=ws_manager,
-                bandwidth_meter=bandwidth_meter,
-                pause_state=ssh_pause,
-            )
-            _registered_pollers.append(ssh_poller)
-            asyncio.create_task(ssh_poller.run())
-
-    # InControl 2 cloud poller (optional - adds event log + cloud-side data)
-    ic2_cfg = config.get("incontrol", {})
-    if ic2_cfg.get("enabled") and os.environ.get("NETMON_INCONTROL_CLIENT_ID"):
-        ic2_poller = InControlPoller(
-            config={
-                "client_id": os.environ["NETMON_INCONTROL_CLIENT_ID"],
-                "client_secret": os.environ.get("NETMON_INCONTROL_CLIENT_SECRET", ""),
-                "org_id": ic2_cfg.get("org_id", ""),
-                "poll_interval": ic2_cfg.get("poll_interval", 60),
-                "event_limit": ic2_cfg.get("event_limit", 30),
-            },
-            state=state,
-            ws_manager=ws_manager,
-            bandwidth_meter=bandwidth_meter,
-        )
-        _registered_pollers.append(ic2_poller)
-        asyncio.create_task(ic2_poller.run())
+    # All pollers — including the previously-legacy udm / br1 /
+    # balance310 / ping_targets / incontrol entries — are now driven
+    # from the devices: map via `_migrate_legacy_config` + the driver
+    # registry. There is no second code path.
 
     # Alerts engine — evaluates rules against state every ~5s and publishes
     # firing/resolved alerts over the existing WebSocket.

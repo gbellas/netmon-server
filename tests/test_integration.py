@@ -208,17 +208,19 @@ class TestE2E:
         doc = json.loads(body)
         ids = [d["id"] for d in doc["devices"]]
         assert set(ids) == {"pings", "udm"}
-        # Driver device gets its real kind; legacy device gets legacy_*.
+        # Post-migration the legacy `udm` entry (no kind: in the fixture)
+        # is rewritten to kind=unifi_network before the list endpoint
+        # runs, so both devices come back with a real driver kind.
         by_id = {d["id"]: d for d in doc["devices"]}
         assert by_id["pings"]["kind"] == "icmp_ping"
-        assert by_id["udm"]["kind"] == "legacy_unifi_network"
+        assert by_id["udm"]["kind"] == "unifi_network"
 
     def test_driver_kinds_lists_registry(self, server):
         base, tok = server
         _, body = _get(f"{base}/api/driver-kinds", token=tok)
         doc = json.loads(body)
         assert set(doc["kinds"]) == {
-            "peplink_router", "unifi_network", "icmp_ping"
+            "peplink_router", "unifi_network", "icmp_ping", "incontrol"
         }
 
     def test_config_export_scrubs_passwords(self, server):
