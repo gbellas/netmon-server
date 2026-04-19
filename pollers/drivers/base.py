@@ -74,10 +74,11 @@ class DeviceSpec:
     from Balance-family."""
 
     wan_carriers: dict[str, str] = field(default_factory=dict)
-    """Per-WAN carrier labels for UI branding, e.g. {"1": "fiber",
-    "2": "att"}. Only meaningful for gateways that can't detect the
-    downstream ISP themselves (e.g. UniFi seeing an LTE modem as plain
-    Ethernet)."""
+    """DEPRECATED: retained for back-compat reads only. New configs use
+    `extra["wan_overrides"]`, which carries both a carrier override AND a
+    display label keyed by WAN index. Auto-migrated by
+    `_migrate_legacy_config` into wan_overrides[idx].carrier_override
+    when no wan_overrides is present."""
 
     extra: dict[str, Any] = field(default_factory=dict)
     """Driver-specific fields. Each driver documents what it reads here.
@@ -98,6 +99,18 @@ class DeviceSpec:
             "poll_interval", "verify_ssl", "is_mobile", "wan_carriers",
         }
         extra = {k: v for k, v in raw.items() if k not in known}
+        # Normalize wan_overrides keys to str so {1: ...} from YAML round-
+        # trips through the JSON API as {"1": ...}.
+        wo = extra.get("wan_overrides")
+        if isinstance(wo, dict):
+            extra["wan_overrides"] = {
+                str(k): (v if isinstance(v, dict) else {})
+                for k, v in wo.items()
+            }
+        # Normalize `direct` block with sane defaults.
+        direct = extra.get("direct")
+        if isinstance(direct, dict):
+            direct.setdefault("enabled", False)
         return cls(
             id=device_id,
             kind=raw["kind"],

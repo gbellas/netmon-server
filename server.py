@@ -154,6 +154,44 @@ def _migrate_legacy_config(cfg: dict) -> dict:
             }
     cfg.pop("incontrol", None)
 
+    # 4) Legacy top-level direct_host/direct_port → br1 device's
+    #    extra["direct"] block. Older deployments had app-side direct-mode
+    #    knobs written as top-level yaml keys; this folds them into the
+    #    per-device shape the API now exposes.
+    legacy_direct_host = cfg.pop("direct_host", None)
+    legacy_direct_port = cfg.pop("direct_port", None)
+    if (legacy_direct_host or legacy_direct_port) and "br1" in devices:
+        br1 = devices["br1"]
+        if isinstance(br1, dict):
+            direct = br1.setdefault("direct", {})
+            direct.setdefault("enabled", True)
+            if legacy_direct_host and "host" not in direct:
+                direct["host"] = str(legacy_direct_host)
+            if legacy_direct_port is not None and "port" not in direct:
+                try:
+                    direct["port"] = int(legacy_direct_port)
+                except (TypeError, ValueError):
+                    pass
+
+    # 5) Per-device `wan_carriers` → `wan_overrides[idx].carrier_override`
+    #    when wan_overrides isn't already set. Keeps the legacy dict readable
+    #    by clients that still expect it; the new field is the write path.
+    for dev_id, raw in devices.items():
+        if not isinstance(raw, dict):
+            continue
+        if raw.get("wan_overrides"):
+            continue
+        legacy = raw.get("wan_carriers")
+        if not isinstance(legacy, dict) or not legacy:
+            continue
+        migrated: dict = {}
+        for idx, carrier in legacy.items():
+            if carrier is None:
+                continue
+            migrated[str(idx)] = {"carrier_override": str(carrier)}
+        if migrated:
+            raw["wan_overrides"] = migrated
+
     return cfg
 
 
@@ -412,9 +450,13 @@ async def service_worker():
 
 @app.get("/api/state")
 async def get_state():
+    # `ui_prefs` is embedded here (instead of requiring a second request)
+    # because clients need them on every reconnect to render correctly.
+    # Keeps wire traffic to one round-trip per full-state refresh.
     return JSONResponse({
         "data": state.get_all(),
         "history": state.get_history(),
+        "ui_prefs": _ui_prefs_view(),
     })
 
 
@@ -500,6 +542,19 @@ def _device_edit_view(dev_id: str, raw: dict) -> dict:
     clean.setdefault("verify_ssl",    False)
     clean.setdefault("is_mobile",     False)
     clean.setdefault("wan_carriers",  {})
+    clean.setdefault("wan_overrides", {})
+    # `direct` is a per-device app-side mode. The server doesn't poll via
+    # it — the iOS app does — but we persist the knobs here so the same
+    # settings UI edits them. Defaults match an "off" state so pre-existing
+    # deployments look identical on upgrade.
+    direct = clean.setdefault("direct", {})
+    if isinstance(direct, dict):
+        direct.setdefault("enabled",    False)
+        direct.setdefault("host",       "")
+        direct.setdefault("port",       0)
+        direct.setdefault("auth_mode",  "none")
+        direct.setdefault("auth_token", "")
+        direct.setdefault("timeout_ms", 2000)
 
     # Driver-specific defaults. Kept inline (no per-driver "describe
     # your fields" hook) because the field set is small and the
@@ -682,6 +737,11 @@ async def update_device(dev_id: str, body: _DeviceBody):
     # doesn't leave two sets running against the same id.
     previous = devices[dev_id]
     merged = _merge_preserving_secrets(previous, body.config)
+    # If the PUT provided wan_overrides, the legacy wan_carriers dict is
+    # considered obsolete for this device — wipe it so subsequent GETs
+    # don't return both a stale carrier and a fresh override.
+    if isinstance(merged.get("wan_overrides"), dict) and merged["wan_overrides"]:
+        merged.pop("wan_carriers", None)
     _stop_driver_device(dev_id)
     config["devices"][dev_id] = merged
     _persist_config()
@@ -1604,6 +1664,492 @@ async def update_dashboard_layout(body: _DashboardLayoutBody):
     return _dashboard_layout_view()
 
 
+# ---- UI preferences ---------------------------------------------------
+#
+# Non-device-specific UI knobs (theme, units, sparkline, alert-banner
+# state). Persisted under `config.yaml` → `ui.*`. The iOS app + web
+# client both GET these on load and PUT back whenever the user flips
+# anything. They also ride along in `/api/state` snapshots under the
+# `ui_prefs` key so clients don't need a separate fetch every delta.
+
+_UI_DEFAULTS: dict = {
+    "theme": "auto",
+    "units": {
+        "throughput":       "auto",
+        "latency":          "ms",
+        "bandwidth_prefix": "metric",
+    },
+    "timestamp_format": "relative",
+    "sparkline": {
+        "visible":       True,
+        "window_points": 60,
+        "height":        60,
+    },
+    "alert_banner": {
+        "dismissed_ids": [],
+        "dismissible":   True,
+    },
+    "dashboard_refresh": {
+        "show_indicator": True,
+        "format":         "relative",
+    },
+}
+
+
+def _deep_merge_defaults(defaults: dict, override: Any) -> dict:
+    """Return a dict that has every key from `defaults`, overlaid with
+    whatever typed-compatible keys `override` carries. Missing keys come
+    from defaults; unknown keys in override are dropped (so clients can't
+    smuggle garbage into config.yaml).
+
+    Special case: when `defaults` is an empty dict (or has no entry for
+    a key that's also a dict in `override`), we treat it as an
+    "unschematised" slot and pass the override dict through verbatim —
+    that's how open maps like `rules: {rule_id: bool}` survive.
+    """
+    import copy
+    out = copy.deepcopy(defaults)
+    if not isinstance(override, dict):
+        return out
+    # Empty defaults dict = unschematised container; accept override as-is.
+    if isinstance(defaults, dict) and not defaults and isinstance(override, dict):
+        return copy.deepcopy(override)
+    for k, dv in defaults.items():
+        if k not in override:
+            continue
+        ov = override[k]
+        if isinstance(dv, dict) and isinstance(ov, dict):
+            out[k] = _deep_merge_defaults(dv, ov)
+        elif isinstance(dv, list) and isinstance(ov, list):
+            out[k] = list(ov)
+        elif type(dv) is type(ov) or (isinstance(dv, bool) and isinstance(ov, bool)):
+            out[k] = ov
+        elif isinstance(dv, (int, float)) and isinstance(ov, (int, float)) and not isinstance(ov, bool):
+            out[k] = ov
+        elif isinstance(dv, str) and isinstance(ov, str):
+            out[k] = ov
+    return out
+
+
+def _ui_prefs_view() -> dict:
+    return _deep_merge_defaults(_UI_DEFAULTS, config.get("ui") or {})
+
+
+def _validate_ui_prefs(body: dict) -> dict:
+    """Raise 400 on obviously-invalid values; return a clean copy ready
+    for persistence. Range clamps:
+      sparkline.window_points: 20..240
+      sparkline.height:        30..120
+      theme:                   auto|dark|light
+      units.throughput:        auto|bits|Mbps|Gbps
+      units.latency:           ms|s
+      units.bandwidth_prefix:  metric|binary
+      timestamp_format:        relative|absolute|both
+      dashboard_refresh.format: iso|relative|clock
+    """
+    if not isinstance(body, dict):
+        raise HTTPException(400, "ui prefs must be an object")
+    merged = _deep_merge_defaults(_UI_DEFAULTS, body)
+    if merged["theme"] not in ("auto", "dark", "light"):
+        raise HTTPException(400, f"invalid theme {merged['theme']!r}")
+    if merged["units"]["throughput"] not in ("auto", "bits", "Mbps", "Gbps"):
+        raise HTTPException(400, "invalid units.throughput")
+    if merged["units"]["latency"] not in ("ms", "s"):
+        raise HTTPException(400, "invalid units.latency")
+    if merged["units"]["bandwidth_prefix"] not in ("metric", "binary"):
+        raise HTTPException(400, "invalid units.bandwidth_prefix")
+    if merged["timestamp_format"] not in ("relative", "absolute", "both"):
+        raise HTTPException(400, "invalid timestamp_format")
+    wp = int(merged["sparkline"]["window_points"])
+    if wp < 20 or wp > 240:
+        raise HTTPException(400, "sparkline.window_points out of range 20..240")
+    merged["sparkline"]["window_points"] = wp
+    h = int(merged["sparkline"]["height"])
+    if h < 30 or h > 120:
+        raise HTTPException(400, "sparkline.height out of range 30..120")
+    merged["sparkline"]["height"] = h
+    if merged["dashboard_refresh"]["format"] not in ("iso", "relative", "clock"):
+        raise HTTPException(400, "invalid dashboard_refresh.format")
+    merged["alert_banner"]["dismissed_ids"] = [
+        str(x) for x in merged["alert_banner"].get("dismissed_ids") or []
+    ]
+    return merged
+
+
+@app.get("/api/settings/ui")
+async def get_ui_prefs():
+    return _ui_prefs_view()
+
+
+@app.put("/api/settings/ui")
+async def put_ui_prefs(body: dict):
+    clean = _validate_ui_prefs(body)
+    config["ui"] = clean
+    _persist_config()
+    return _ui_prefs_view()
+
+
+# ---- Per-card appearance ----------------------------------------------
+#
+# Keyed by driver kind. The defaults here match what the current frontend
+# hardcodes, so a pre-existing deployment that's never PUT to this
+# endpoint gets identical rendering on upgrade.
+
+_APPEARANCE_DEFAULTS: dict = {
+    "peplink_router": {
+        "metrics_visible": ["status", "uptime", "cpu", "memory", "wan_rows"],
+        "metrics_order":   ["status", "uptime", "cpu", "memory", "wan_rows"],
+        "wan_row_metrics": ["latency", "jitter", "loss", "throughput", "signal"],
+        "color_thresholds": {
+            "latency_ms":   [100, 500],
+            "loss_pct":     [1, 5],
+            "jitter_ms":    [10, 50],
+            "signal_rsrp":  [-100, -120],
+        },
+    },
+    "unifi_network": {
+        "metrics_visible": ["status", "uptime", "cpu", "memory", "wan_rows"],
+        "metrics_order":   ["status", "uptime", "cpu", "memory", "wan_rows"],
+        "wan_row_metrics": ["latency", "throughput"],
+        "color_thresholds": {
+            "latency_ms": [100, 500],
+            "loss_pct":   [1, 5],
+        },
+    },
+    "peplink_derived": {
+        "metrics_visible": ["status", "wan_rows"],
+        "metrics_order":   ["status", "wan_rows"],
+        "wan_row_metrics": ["latency", "loss"],
+        "color_thresholds": {
+            "latency_ms": [100, 500],
+            "loss_pct":   [1, 5],
+        },
+    },
+    "icmp_ping": {
+        "metrics_visible": ["targets"],
+        "metrics_order":   ["targets"],
+        "wan_row_metrics": ["latency", "loss"],
+        "color_thresholds": {
+            "latency_ms": [100, 500],
+            "loss_pct":   [1, 5],
+        },
+    },
+    "incontrol": {
+        "metrics_visible": ["status", "events"],
+        "metrics_order":   ["status", "events"],
+        "wan_row_metrics": [],
+        "color_thresholds": {},
+    },
+}
+
+
+def _appearance_view() -> dict:
+    raw = config.get("appearance") or {}
+    out: dict = {}
+    for kind, defaults in _APPEARANCE_DEFAULTS.items():
+        out[kind] = _deep_merge_defaults(defaults, raw.get(kind) or {})
+    return out
+
+
+def _validate_appearance_block(kind: str, body: dict) -> dict:
+    if kind not in _APPEARANCE_DEFAULTS:
+        raise HTTPException(400, f"unknown card kind {kind!r}")
+    merged = _deep_merge_defaults(_APPEARANCE_DEFAULTS[kind], body)
+    merged["metrics_visible"] = [str(x) for x in merged["metrics_visible"]]
+    merged["metrics_order"]   = [str(x) for x in merged["metrics_order"]]
+    merged["wan_row_metrics"] = [str(x) for x in merged["wan_row_metrics"]]
+    return merged
+
+
+@app.get("/api/settings/appearance")
+async def get_appearance():
+    return _appearance_view()
+
+
+@app.put("/api/settings/appearance")
+async def put_appearance(body: dict):
+    if not isinstance(body, dict):
+        raise HTTPException(400, "appearance must be an object keyed by kind")
+    # Validate the whole payload BEFORE mutating config so a bad block
+    # doesn't leave the file half-updated.
+    cleaned: dict = {}
+    for kind, block in body.items():
+        if not isinstance(block, dict):
+            raise HTTPException(400, f"appearance[{kind!r}] must be an object")
+        cleaned[kind] = _validate_appearance_block(kind, block)
+    # Merge on top of any existing persisted appearance so PUTs can be
+    # partial (only the card you're editing).
+    existing = config.get("appearance") or {}
+    merged = dict(existing)
+    merged.update(cleaned)
+    config["appearance"] = merged
+    _persist_config()
+    return _appearance_view()
+
+
+# ---- Notifications prefs per-installation -----------------------------
+#
+# Per-APNs-token prefs: which rules, per-device mute list, quiet hours.
+# Persisted alongside push_tokens.json as push_token_prefs.json so the
+# existing token registry file stays a pure list (unchanged schema).
+
+_PREFS_PATH = Path(__file__).parent / "secrets" / "push_token_prefs.json"
+_NOTIF_DEFAULTS: dict = {
+    "rules":       {},
+    "quiet_hours": {"enabled": False, "start": "22:00", "end": "07:00"},
+    "per_device":  {},
+}
+
+
+def _load_notif_prefs() -> dict:
+    import json
+    if not _PREFS_PATH.exists():
+        return {}
+    try:
+        data = json.loads(_PREFS_PATH.read_text())
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _save_notif_prefs(prefs: dict) -> None:
+    import json
+    _PREFS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    tmp = _PREFS_PATH.with_suffix(".tmp")
+    tmp.write_text(json.dumps(prefs))
+    try:
+        tmp.chmod(0o600)
+    except Exception:
+        pass
+    tmp.replace(_PREFS_PATH)
+
+
+def _token_prefs_view(token: str) -> dict:
+    all_prefs = _load_notif_prefs()
+    return _deep_merge_defaults(_NOTIF_DEFAULTS, all_prefs.get(token) or {})
+
+
+def _validate_notif_prefs(body: dict) -> dict:
+    if not isinstance(body, dict):
+        raise HTTPException(400, "prefs must be an object")
+    merged = _deep_merge_defaults(_NOTIF_DEFAULTS, body)
+    # Coerce bool-valued rule/per_device maps.
+    merged["rules"]      = {str(k): bool(v) for k, v in (body.get("rules") or {}).items()}
+    merged["per_device"] = {str(k): bool(v) for k, v in (body.get("per_device") or {}).items()}
+    qh = merged["quiet_hours"]
+    qh["enabled"] = bool(qh.get("enabled", False))
+    qh["start"] = str(qh.get("start", "22:00"))
+    qh["end"]   = str(qh.get("end",   "07:00"))
+    return merged
+
+
+def _parse_hhmm(s: str) -> int:
+    """Minutes-from-midnight for 'HH:MM'. Returns -1 on parse error."""
+    try:
+        hh, mm = s.split(":", 1)
+        return int(hh) * 60 + int(mm)
+    except Exception:
+        return -1
+
+
+def _in_quiet_hours(qh: dict, now_minutes: int) -> bool:
+    if not qh.get("enabled"):
+        return False
+    start = _parse_hhmm(qh.get("start") or "")
+    end   = _parse_hhmm(qh.get("end")   or "")
+    if start < 0 or end < 0:
+        return False
+    if start == end:
+        return False
+    if start < end:
+        return start <= now_minutes < end
+    # Wraps midnight (e.g. 22:00 → 07:00).
+    return now_minutes >= start or now_minutes < end
+
+
+def _should_notify(token: str, alert: dict) -> bool:
+    """True if the APNs loop should send `alert` to `token`. False when
+    the user has muted the rule, muted the source device, or we're in
+    quiet hours for a non-critical alert."""
+    prefs = _token_prefs_view(token)
+    rule_id = alert.get("rule_id") or alert.get("id") or ""
+    # A rule explicitly toggled off mutes it.
+    if prefs["rules"].get(str(rule_id)) is False:
+        return False
+    dev_id = alert.get("device_id") or alert.get("device") or ""
+    if dev_id and prefs["per_device"].get(str(dev_id)) is False:
+        return False
+    severity = alert.get("severity", "active")
+    if severity != "critical":
+        import datetime
+        now = datetime.datetime.now()
+        if _in_quiet_hours(prefs["quiet_hours"], now.hour * 60 + now.minute):
+            return False
+    return True
+
+
+@app.get("/api/push/tokens/{token}/prefs")
+async def get_token_prefs(token: str):
+    return _token_prefs_view(token)
+
+
+@app.put("/api/push/tokens/{token}/prefs")
+async def put_token_prefs(token: str, body: dict):
+    clean = _validate_notif_prefs(body)
+    all_prefs = _load_notif_prefs()
+    all_prefs[token] = clean
+    _save_notif_prefs(all_prefs)
+    return clean
+
+
+# ---- Event log + filter presets ---------------------------------------
+#
+# The alerts engine fires `alerts.fired` events per tick. We append each
+# into an in-memory ring buffer so `/api/events` can paginate/filter over
+# recent history without a separate persistence layer. Saved-filter
+# presets are stored in config.yaml under `event_filters.presets`.
+
+_EVENT_RING_MAX = 500
+_event_ring: list[dict] = []
+
+
+def _record_events(fired: list) -> None:
+    """Append newly-fired alerts to the ring buffer. Called from the
+    alerts loop. Each entry gets a monotonic `id` + ISO `ts` so the
+    client can dedupe across reconnects."""
+    import datetime
+    if not fired:
+        return
+    now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z")
+    for a in fired:
+        if not isinstance(a, dict):
+            continue
+        entry = {
+            "id":        f"evt-{len(_event_ring) + 1}",
+            "ts":        a.get("ts") or now_iso,
+            "severity":  a.get("severity", "info"),
+            "device_id": a.get("device_id") or a.get("device") or "",
+            "rule_id":   a.get("rule_id") or a.get("id") or "",
+            "title":     a.get("title", ""),
+            "detail":    a.get("detail", ""),
+        }
+        _event_ring.append(entry)
+    # Ring-buffer trim — drop oldest when over cap.
+    if len(_event_ring) > _EVENT_RING_MAX:
+        del _event_ring[: len(_event_ring) - _EVENT_RING_MAX]
+
+
+def _filter_events(
+    events: list[dict],
+    severity: str | None = None,
+    device_id: str | None = None,
+    since: str | None = None,
+    limit: int | None = None,
+) -> list[dict]:
+    out = events
+    if severity:
+        out = [e for e in out if e.get("severity") == severity]
+    if device_id:
+        out = [e for e in out if e.get("device_id") == device_id]
+    if since:
+        out = [e for e in out if (e.get("ts") or "") >= since]
+    if limit is not None:
+        out = out[-int(limit):]
+    return list(out)
+
+
+@app.get("/api/events")
+async def list_events(
+    severity: str | None = None,
+    device_id: str | None = None,
+    since: str | None = None,
+    limit: int | None = None,
+):
+    """Return recent alert events, newest last. Pass any combination of
+    filter params; omit all of them to get the full ring buffer."""
+    if severity and severity not in ("critical", "warning", "info"):
+        raise HTTPException(400, f"invalid severity {severity!r}")
+    events = _filter_events(_event_ring, severity, device_id, since, limit)
+    return {"events": events, "total": len(_event_ring)}
+
+
+def _event_filter_presets() -> list[dict]:
+    ef = config.get("event_filters") or {}
+    presets = ef.get("presets") or []
+    return [p for p in presets if isinstance(p, dict)]
+
+
+def _validate_event_preset(body: dict) -> dict:
+    if not isinstance(body, dict):
+        raise HTTPException(400, "preset must be an object")
+    name = str(body.get("name") or "").strip()
+    if not name:
+        raise HTTPException(400, "preset.name is required")
+    sev = body.get("severity")
+    if sev is not None and sev not in ("critical", "warning", "info"):
+        raise HTTPException(400, "preset.severity invalid")
+    rel = body.get("since_relative_minutes")
+    if rel is not None:
+        try:
+            rel = int(rel)
+        except (TypeError, ValueError):
+            raise HTTPException(400, "preset.since_relative_minutes must be int")
+    out: dict = {"name": name}
+    if sev is not None:
+        out["severity"] = sev
+    if body.get("device_id"):
+        out["device_id"] = str(body["device_id"])
+    if rel is not None:
+        out["since_relative_minutes"] = rel
+    return out
+
+
+@app.get("/api/events/filters")
+async def list_event_filters():
+    return {"presets": _event_filter_presets()}
+
+
+@app.post("/api/events/filters")
+async def create_event_filter(body: dict):
+    clean = _validate_event_preset(body)
+    presets = list(_event_filter_presets())
+    # Dense int id; not a UUID but stable for the small-N preset list.
+    next_id = 1
+    if presets:
+        used = [int(p.get("id", 0) or 0) for p in presets]
+        next_id = (max(used) if used else 0) + 1
+    clean["id"] = str(next_id)
+    presets.append(clean)
+    config.setdefault("event_filters", {})["presets"] = presets
+    _persist_config()
+    return clean
+
+
+@app.put("/api/events/filters/{preset_id}")
+async def update_event_filter(preset_id: str, body: dict):
+    clean = _validate_event_preset(body)
+    presets = list(_event_filter_presets())
+    for i, p in enumerate(presets):
+        if str(p.get("id")) == str(preset_id):
+            clean["id"] = str(preset_id)
+            presets[i] = clean
+            config.setdefault("event_filters", {})["presets"] = presets
+            _persist_config()
+            return clean
+    raise HTTPException(404, f"no preset with id {preset_id!r}")
+
+
+@app.delete("/api/events/filters/{preset_id}")
+async def delete_event_filter(preset_id: str):
+    presets = list(_event_filter_presets())
+    new = [p for p in presets if str(p.get("id")) != str(preset_id)]
+    if len(new) == len(presets):
+        raise HTTPException(404, f"no preset with id {preset_id!r}")
+    config.setdefault("event_filters", {})["presets"] = new
+    _persist_config()
+    return {"ok": True, "id": preset_id}
+
+
 async def _alerts_loop():
     """Tick the alerts engine every ~5s. Publishes firing/resolved alerts
     through the same WebSocket machinery used for regular state updates,
@@ -1632,9 +2178,19 @@ async def _alerts_loop():
                 # Fan out newly-firing alerts to APNs. Silent no-op if
                 # APNs isn't configured or no device tokens registered.
                 fired = updates.get("alerts.fired")
+                if fired:
+                    # Always drop into the event ring, regardless of APNs
+                    # state — the ring powers /api/events, not push.
+                    _record_events(fired if isinstance(fired, list) else [fired])
                 if fired and apns.is_configured and push_tokens.count() > 0:
-                    tokens = push_tokens.all()
-                    for alert in fired:
+                    all_tokens = push_tokens.all()
+                    for alert in (fired if isinstance(fired, list) else [fired]):
+                        # Filter by per-token prefs (rule mute, device mute,
+                        # quiet hours). A token that's opted out of this
+                        # rule simply isn't in the fanout list.
+                        tokens = [t for t in all_tokens if _should_notify(t, alert)]
+                        if not tokens:
+                            continue
                         title = alert.get("title", "NetMon alert")
                         body = alert.get("detail", "")
                         severity = alert.get("severity", "active")
