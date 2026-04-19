@@ -57,10 +57,15 @@ class PeplinkSshPingPoller(BasePoller):
         self, config: dict, state, ws_manager, bandwidth_meter=None,
         poller_name: str | None = None,
         key_prefix_by_role: dict[str, str] | None = None,
+        state_key_root: str | None = None,
         pause_state=None,
     ):
         name = poller_name or self._DEFAULT_POLLER_NAME
         super().__init__(name, config, state, ws_manager, bandwidth_meter=bandwidth_meter)
+        # Where to publish state keys. If set, each ping target's keys land
+        # under `<state_key_root>.<host>.*`; otherwise falls through to the
+        # poller's `name` (legacy behavior where name doubled as root).
+        self._state_key_root = state_key_root
         self.host = config["host"]
         self.port = config.get("port", 22)
         self.username = config.get("username", "admin")
@@ -68,7 +73,12 @@ class PeplinkSshPingPoller(BasePoller):
         self.targets = config.get("targets", [])
         self.ssh_timeout = config.get("ssh_timeout", 10)
         self._window = 30
-        self._key_prefix_by_role = key_prefix_by_role or self._DEFAULT_KEY_PREFIXES
+        # Legacy role-based prefix routing kept for backwards compat with
+        # any deployment still shipping `key_prefix_by_role` in config. New
+        # code publishes under `<poller_name>.<host>.*` unconditionally —
+        # matches the icmp_ping driver's schema so the dashboard enumerates
+        # SSH ping targets the same way it does ICMP ones.
+        self._key_prefix_by_role = key_prefix_by_role  # None => unified scheme
         # Serializes bursts across targets on THIS device (Peplink CLI has a
         # global lock on `support ping`).
         self._ping_lock = asyncio.Lock()
@@ -99,13 +109,18 @@ class PeplinkSshPingPoller(BasePoller):
         host = target["host"]
         name = target.get("name", host)
         role = target.get("role", "internet")
-        # State-key prefix comes from the configured role→prefix map so the
-        # same poller code can publish under `br1_internet.*`, `br1_tunnel.*`,
-        # `balance_tunnel.*`, etc., depending on where it's running.
-        root = self._key_prefix_by_role.get(
-            role, self._DEFAULT_KEY_PREFIXES.get(role, "ssh")
-        )
-        prefix = f"{root}.{host.replace('.', '_')}"
+        # Unified scheme: publish under `<poller_name>.<host>.*` (matches
+        # the icmp_ping driver). Legacy role-based routing still honored if
+        # caller explicitly passed `key_prefix_by_role` — needed for a
+        # one-release grace period while existing deployments catch up.
+        if self._key_prefix_by_role:
+            root = self._key_prefix_by_role.get(
+                role, self._DEFAULT_KEY_PREFIXES.get(role, self.name)
+            )
+            prefix = f"{root}.{host.replace('.', '_')}"
+        else:
+            root = self._state_key_root or self.name
+            prefix = f"{root}.{host.replace('.', '_')}"
         loop = asyncio.get_running_loop()
         backoff = 1.0
         rtts: deque = deque(maxlen=self._window)

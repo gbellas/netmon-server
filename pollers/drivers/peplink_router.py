@@ -156,15 +156,14 @@ class PeplinkRouterDriver:
                 state=state,
                 ws_manager=ws_manager,
                 bandwidth_meter=bandwidth_meter,
-                # Per-role state-key prefix routing. Keys configured in
-                # YAML as e.g. `role: "tunnel"` get published under the
-                # caller-chosen namespace so the dashboard can distinguish
-                # "internet pings" vs "tunnel pings" within the same
-                # ping streamer.
-                key_prefix_by_role=ssh_cfg.get(
-                    "key_prefix_by_role"
-                ) or self._default_key_prefixes(spec.id),
+                # Unified scheme: SSH pings publish under
+                # `<device_id>.<host>.*` (matches icmp_ping devices), so
+                # the dashboard enumerates them the same way. Legacy
+                # `key_prefix_by_role` still honored if explicitly set in
+                # config — one-release backcompat.
+                key_prefix_by_role=ssh_cfg.get("key_prefix_by_role"),
                 poller_name=f"{spec.id}_ssh",
+                state_key_root=spec.id,
                 pause_state=pause_state,
             )
             # Share the ping lock with the REST poller if the existing

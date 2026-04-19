@@ -1827,11 +1827,11 @@ _APPEARANCE_DEFAULTS: dict = {
     "peplink_router": {
         "metrics_visible": [
             "status", "uptime", "host", "wan_rows",
-            "cellular", "speedfusion", "gps",
+            "cellular", "speedfusion", "gps", "ping_targets",
         ],
         "metrics_order": [
             "status", "uptime", "host", "wan_rows",
-            "cellular", "speedfusion", "gps",
+            "cellular", "speedfusion", "gps", "ping_targets",
         ],
         "wan_row_metrics": ["latency", "jitter", "loss", "throughput", "signal"],
         "color_thresholds": {
@@ -1844,11 +1844,11 @@ _APPEARANCE_DEFAULTS: dict = {
     "unifi_network": {
         "metrics_visible": [
             "status", "uptime", "host", "cpu", "memory",
-            "client_count", "wan_rows",
+            "client_count", "wan_rows", "ping_targets",
         ],
         "metrics_order": [
             "status", "uptime", "host", "cpu", "memory",
-            "client_count", "wan_rows",
+            "client_count", "wan_rows", "ping_targets",
         ],
         "wan_row_metrics": ["latency", "throughput"],
         "color_thresholds": {

@@ -140,15 +140,16 @@ class PeplinkDerivedDriver:
                 state=state,
                 ws_manager=ws_manager,
                 bandwidth_meter=bandwidth_meter,
+                # Unified scheme: SSH pings publish under
+                # `<device_id>.<host>.*`. The dashboard enumerates them
+                # the same way it does icmp_ping targets, so
+                # Balance-SSH-pings-BR1 shows up under the Balance 310
+                # card as a regular ping target. Legacy
+                # `key_prefix_by_role` in config still honored for
+                # one-release backcompat.
                 poller_name=f"{spec.id}_ssh",
-                # Tunnel-role pings publish under `balance_tunnel.*` to
-                # preserve the derived poller's hardcoded source-of-truth
-                # key prefix. Internet-role pings land under the
-                # `<id>_internet` convention like peplink_router.
-                key_prefix_by_role=ssh_cfg.get("key_prefix_by_role") or {
-                    "tunnel":   "balance_tunnel",
-                    "internet": f"{spec.id}_internet",
-                },
+                state_key_root=spec.id,
+                key_prefix_by_role=ssh_cfg.get("key_prefix_by_role"),
                 # DO NOT pass `pause_state` here. This poller measures
                 # tunnel latency from the Balance side — an iPhone on
                 # the BR1 LAN can't replace it, so honoring the pause

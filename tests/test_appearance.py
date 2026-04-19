@@ -35,7 +35,7 @@ class TestAppearance:
         pr = r.json()["peplink_router"]
         assert pr["metrics_visible"] == [
             "status", "uptime", "host", "wan_rows",
-            "cellular", "speedfusion", "gps",
+            "cellular", "speedfusion", "gps", "ping_targets",
         ]
         assert pr["wan_row_metrics"] == [
             "latency", "jitter", "loss", "throughput", "signal",
@@ -54,11 +54,11 @@ class TestAppearance:
         authoritative = {
             "peplink_router": {
                 "status", "uptime", "host", "wan_rows",
-                "cellular", "speedfusion", "gps",
+                "cellular", "speedfusion", "gps", "ping_targets",
             },
             "unifi_network": {
                 "status", "uptime", "host", "cpu", "memory",
-                "client_count", "wan_rows",
+                "client_count", "wan_rows", "ping_targets",
             },
             "peplink_derived": {
                 "status", "uptime", "host", "speedfusion",
