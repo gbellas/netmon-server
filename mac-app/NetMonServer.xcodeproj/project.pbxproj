@@ -13,11 +13,13 @@
 		4881ED18F1A9D1981F5E3240 /* Resources in Resources */ = {isa = PBXBuildFile; fileRef = 9CBB54908ED83B0C90B0DD0B /* Resources */; };
 		C97080BAF00CC840B7F236D7 /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 385D342B6B9AEE5E69A35B04 /* Cocoa.framework */; };
 		EE5ECDA523B7AE2025376136 /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20613E3682D175BBBAC518AB /* MenuBarView.swift */; };
+		A0A0A0A001000000UPDATEC1 /* UpdateChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0A0A0A002000000UPDATEC2 /* UpdateChecker.swift */; };
 		FBE41599130D1D3D77BB6AA9 /* ServerController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A6E645164863A4F17EAD975 /* ServerController.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		20613E3682D175BBBAC518AB /* MenuBarView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MenuBarView.swift; sourceTree = "<group>"; };
+		A0A0A0A002000000UPDATEC2 /* UpdateChecker.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = UpdateChecker.swift; sourceTree = "<group>"; };
 		385D342B6B9AEE5E69A35B04 /* Cocoa.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Cocoa.framework; path = Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.0.sdk/System/Library/Frameworks/Cocoa.framework; sourceTree = DEVELOPER_DIR; };
 		582FF1CFCAAD9C13631DE5C4 /* NetMonServer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = NetMonServer.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		5DD37E2F5B2A02D0888689B5 /* SetupView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SetupView.swift; sourceTree = "<group>"; };
@@ -54,6 +56,7 @@
 				F61DCCC5244B0F74A67E053F /* NetMonServerApp.swift */,
 				9A6E645164863A4F17EAD975 /* ServerController.swift */,
 				20613E3682D175BBBAC518AB /* MenuBarView.swift */,
+				A0A0A0A002000000UPDATEC2 /* UpdateChecker.swift */,
 				5DD37E2F5B2A02D0888689B5 /* SetupView.swift */,
 				8CEF3AE9689B8D7446B389E2 /* PreferencesView.swift */,
 				DE206BE1230D504A78027703 /* Info.plist */,
@@ -165,6 +168,7 @@
 				0AB967B6C735E0C2F4E9892C /* NetMonServerApp.swift in Sources */,
 				FBE41599130D1D3D77BB6AA9 /* ServerController.swift in Sources */,
 				EE5ECDA523B7AE2025376136 /* MenuBarView.swift in Sources */,
+				A0A0A0A001000000UPDATEC1 /* UpdateChecker.swift in Sources */,
 				3ED3121CBAB285CFE257ABEB /* SetupView.swift in Sources */,
 				3BE67A939450F2EF6496D174 /* PreferencesView.swift in Sources */,
 			);

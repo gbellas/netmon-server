@@ -1,0 +1,6 @@
+# GitHub Pages config. Serves docs/site as the site root.
+# Enable Pages → Source: main branch /docs/site folder in the repo Settings UI.
+title: NetMon
+description: Real-time home + mobile network dashboard.
+theme: null
+plugins: []

@@ -140,19 +140,18 @@ def _migrate_legacy_config(cfg: dict) -> dict:
     cfg.pop("ping_targets", None)
     cfg.pop("ping", None)
 
-    # 3) Top-level incontrol block → synthesized incontrol device.
-    ic = cfg.get("incontrol")
-    if isinstance(ic, dict) and ic.get("enabled"):
-        if "incontrol" not in devices:
-            devices["incontrol"] = {
-                "kind":          "incontrol",
-                "name":          "InControl 2",
-                "enabled":       True,
-                "org_id":        ic.get("org_id", ""),
-                "poll_interval": int(ic.get("poll_interval", 60)),
-                "event_limit":   int(ic.get("event_limit", 30)),
-            }
-    cfg.pop("incontrol", None)
+    # 3) InControl is an integration, not a device. If an older config
+    #    migrated it into devices["incontrol"], pull it back out to the
+    #    top-level `incontrol:` block so the integration startup branch
+    #    picks it up.
+    legacy_device_ic = devices.pop("incontrol", None)
+    if isinstance(legacy_device_ic, dict) and "incontrol" not in cfg:
+        cfg["incontrol"] = {
+            "enabled":       bool(legacy_device_ic.get("enabled", False)),
+            "org_id":        legacy_device_ic.get("org_id", ""),
+            "poll_interval": int(legacy_device_ic.get("poll_interval", 60)),
+            "event_limit":   int(legacy_device_ic.get("event_limit", 30)),
+        }
 
     # 4) Legacy top-level direct_host/direct_port → br1 device's
     #    extra["direct"] block. Older deployments had app-side direct-mode
@@ -404,6 +403,35 @@ def _persist_config() -> None:
     tmp.replace(target)
 
 
+@app.get("/api/version")
+async def version():
+    """Build / release metadata. The iOS app polls this after connect to
+    detect when the user's Mac is running an older server than what the
+    app was shipped against (triggers the in-app "update available"
+    banner). Unauthenticated? No — kept behind auth so the listing
+    isn't a free reconnaissance surface. See `/api/health` for the
+    unauthenticated liveness probe."""
+    import sys
+    from datetime import datetime, timezone
+    try:
+        from version import __version__, GIT_SHA
+    except Exception:
+        __version__, GIT_SHA = "0.0.0", "unknown"
+    # build_date: mtime of version.py — stable across restarts on the
+    # same installed build, rolls forward on each reinstall.
+    try:
+        mtime = Path(__file__).with_name("version.py").stat().st_mtime
+        build_date = datetime.fromtimestamp(mtime, tz=timezone.utc).isoformat()
+    except Exception:
+        build_date = ""
+    return {
+        "version":        __version__,
+        "git_sha":        GIT_SHA,
+        "build_date":     build_date,
+        "python_version": sys.version.split()[0],
+    }
+
+
 @app.get("/api/health")
 async def health():
     """Unauthenticated liveness probe for watchdog scripts.
@@ -493,8 +521,6 @@ async def list_devices():
             capabilities.append("rest")
         if kind == "icmp_ping":
             capabilities.append("icmp_ping")
-        if kind == "incontrol":
-            capabilities.append("cloud")
         result.append({
             "id":            dev_id,
             "kind":          kind,
@@ -578,11 +604,6 @@ def _device_edit_view(dev_id: str, raw: dict) -> dict:
         clean.setdefault("count",    1)
         clean.setdefault("timeout",  2)
         clean.setdefault("interval", 5)
-    elif kind == "incontrol":
-        clean.setdefault("enabled",       False)
-        clean.setdefault("org_id",        "")
-        clean.setdefault("poll_interval", 60)
-        clean.setdefault("event_limit",   30)
 
     # Secret redaction, recursive — covers both top-level password and
     # ssh.password / any driver-specific nested secret.
@@ -1834,12 +1855,6 @@ _APPEARANCE_DEFAULTS: dict = {
             "loss_pct":   [1, 5],
         },
     },
-    "incontrol": {
-        "metrics_visible": ["status", "events"],
-        "metrics_order":   ["status", "events"],
-        "wan_row_metrics": [],
-        "color_thresholds": {},
-    },
 }
 
 
@@ -2208,6 +2223,54 @@ async def _alerts_loop():
         await asyncio.sleep(5)
 
 
+# ---- InControl integration (cloud-only, not a device) ------------------
+
+_INCONTROL_DEFAULTS = {
+    "enabled":       False,
+    "org_id":        "",
+    "poll_interval": 60,
+    "event_limit":   30,
+}
+
+
+def _incontrol_view() -> dict:
+    raw = config.get("incontrol") or {}
+    out = dict(_INCONTROL_DEFAULTS)
+    for k, v in raw.items():
+        if k in out:
+            out[k] = v
+    out["enabled"]       = bool(out["enabled"])
+    out["org_id"]        = str(out["org_id"] or "")
+    out["poll_interval"] = int(out["poll_interval"] or 60)
+    out["event_limit"]   = int(out["event_limit"] or 30)
+    return out
+
+
+@app.get("/api/integrations/incontrol")
+async def get_incontrol_integration():
+    return _incontrol_view()
+
+
+@app.put("/api/integrations/incontrol")
+async def put_incontrol_integration(body: dict):
+    if not isinstance(body, dict):
+        raise HTTPException(400, "body must be an object")
+    merged = _incontrol_view()
+    for k in ("enabled", "org_id", "poll_interval", "event_limit"):
+        if k in body:
+            merged[k] = body[k]
+    merged["enabled"]       = bool(merged["enabled"])
+    merged["org_id"]        = str(merged["org_id"] or "")
+    try:
+        merged["poll_interval"] = max(10, int(merged["poll_interval"]))
+        merged["event_limit"]   = max(1, int(merged["event_limit"]))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "poll_interval/event_limit must be integers")
+    config["incontrol"] = merged
+    _persist_config()
+    return merged
+
+
 @app.on_event("startup")
 async def startup():
     logger.info("Starting NetMon pollers...")
@@ -2227,10 +2290,33 @@ async def startup():
             f"driver {raw['kind']} built {count} poller(s) for '{dev_id}'"
         )
 
-    # All pollers — including the previously-legacy udm / br1 /
-    # balance310 / ping_targets / incontrol entries — are now driven
-    # from the devices: map via `_migrate_legacy_config` + the driver
-    # registry. There is no second code path.
+    # InControl 2 cloud integration. Top-level `incontrol:` block in
+    # config.yaml; NOT a per-device driver. Credentials come from env
+    # vars (NETMON_INCONTROL_CLIENT_ID / _CLIENT_SECRET).
+    ic = config.get("incontrol") or {}
+    if ic.get("enabled"):
+        client_id = os.environ.get("NETMON_INCONTROL_CLIENT_ID", "")
+        client_secret = os.environ.get("NETMON_INCONTROL_CLIENT_SECRET", "")
+        if not client_id:
+            logger.warning(
+                "incontrol.enabled=true but NETMON_INCONTROL_CLIENT_ID is unset; skipping"
+            )
+        else:
+            from pollers.incontrol import InControlPoller
+            ic_cfg = {
+                "client_id":     client_id,
+                "client_secret": client_secret,
+                "org_id":        ic.get("org_id", ""),
+                "poll_interval": int(ic.get("poll_interval", 60)),
+                "event_limit":   int(ic.get("event_limit", 30)),
+            }
+            ic_poller = InControlPoller(
+                config=ic_cfg, state=state, ws_manager=ws_manager,
+                bandwidth_meter=bandwidth_meter,
+            )
+            _registered_pollers.append(ic_poller)
+            asyncio.create_task(ic_poller.run())
+            logger.info("InControl integration started")
 
     # Alerts engine — evaluates rules against state every ~5s and publishes
     # firing/resolved alerts over the existing WebSocket.

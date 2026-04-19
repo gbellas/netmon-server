@@ -54,6 +54,9 @@ struct NetMonServerApp: App {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)    // no Dock icon
+        // Silent once-per-24h GitHub releases check. Triggers a dialog
+        // only when a newer version is available.
+        UpdateChecker.shared.checkSilentlyIfDue()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

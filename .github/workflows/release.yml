@@ -1,0 +1,74 @@
+# Release workflow: tag-triggered, builds + signs + notarizes + staples the
+# NetMon menu-bar app, then creates a GitHub Release and attaches the DMG.
+#
+# Required repo secrets (Settings → Secrets → Actions):
+#   DEVELOPER_ID_CERT_P12_BASE64  — base64-encoded Developer ID Application .p12
+#   DEVELOPER_ID_CERT_PASSWORD    — the .p12 export password
+#   ASC_KEY_BASE64                — base64-encoded App Store Connect API key (.p8)
+#   ASC_KEY_ID                    — the API key id
+#   ASC_ISSUER_ID                 — the App Store Connect issuer id
+#
+# GITHUB_TOKEN is provided automatically by Actions and is used for the
+# softprops/action-gh-release step.
+
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Import Developer ID signing certificate
+        env:
+          CERT_B64: ${{ secrets.DEVELOPER_ID_CERT_P12_BASE64 }}
+          CERT_PW:  ${{ secrets.DEVELOPER_ID_CERT_PASSWORD }}
+        run: |
+          set -euo pipefail
+          echo "$CERT_B64" | base64 --decode > /tmp/cert.p12
+          KEYCHAIN=/tmp/build.keychain
+          security create-keychain -p actions "$KEYCHAIN"
+          security default-keychain -s "$KEYCHAIN"
+          security unlock-keychain -p actions "$KEYCHAIN"
+          security import /tmp/cert.p12 -k "$KEYCHAIN" -P "$CERT_PW" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k actions "$KEYCHAIN"
+          rm -f /tmp/cert.p12
+
+      - name: Stage App Store Connect API key
+        env:
+          ASC_KEY_B64:    ${{ secrets.ASC_KEY_BASE64 }}
+          ASC_KEY_ID:     ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID:  ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          mkdir -p ~/.appstoreconnect/private_keys
+          echo "$ASC_KEY_B64" | base64 --decode > ~/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8
+          echo "ASC_KEY_ID=$ASC_KEY_ID"       >> "$GITHUB_ENV"
+          echo "ASC_ISSUER_ID=$ASC_ISSUER_ID" >> "$GITHUB_ENV"
+
+      - name: Build, sign, notarize, staple DMG
+        run: |
+          set -euo pipefail
+          cd mac-app
+          # Expects a script at mac-app/scripts/build-dmg.sh that produces
+          # dist/NetMonServer.dmg. The existing finish-notarization.sh is
+          # the notarize+staple helper; build-dmg.sh wraps xcodebuild + it.
+          ./scripts/build-dmg.sh
+          ls -la dist/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: mac-app/dist/NetMonServer.dmg
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

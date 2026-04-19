@@ -43,6 +43,12 @@ struct MenuBarContent: View {
 
         Divider()
 
+        Button("Check for Updates…") {
+            UpdateChecker.shared.checkNow(interactive: true)
+        }
+
+        Divider()
+
         Button(controller.isFirstRun ? "Run setup…" : "Preferences…") {
             // `openWindow` in SwiftUI navigates to a `Window` scene by
             // id. We declared both "setup" and "preferences" windows

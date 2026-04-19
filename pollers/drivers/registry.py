@@ -22,15 +22,16 @@ from .peplink_router import PeplinkRouterDriver
 from .peplink_derived import PeplinkDerivedDriver
 from .unifi_network import UniFiNetworkDriver
 from .icmp_ping import IcmpPingDriver
-from .incontrol import InControlDriver
 
 
+# InControl is a cloud integration, not a device driver. It lives at
+# top-level `incontrol:` in config.yaml and starts up in server.py's
+# startup handler. See `/api/integrations/incontrol`.
 DRIVERS: dict[str, type[DeviceDriver]] = {
     PeplinkRouterDriver.kind:  PeplinkRouterDriver,
     PeplinkDerivedDriver.kind: PeplinkDerivedDriver,
     UniFiNetworkDriver.kind:   UniFiNetworkDriver,
     IcmpPingDriver.kind:       IcmpPingDriver,
-    InControlDriver.kind:      InControlDriver,
 }
 
 

@@ -221,7 +221,7 @@ class TestE2E:
         doc = json.loads(body)
         assert set(doc["kinds"]) == {
             "peplink_router", "peplink_derived",
-            "unifi_network", "icmp_ping", "incontrol",
+            "unifi_network", "icmp_ping",
         }
 
     def test_config_export_scrubs_passwords(self, server):

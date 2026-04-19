@@ -176,7 +176,11 @@ class TestPingTargetsMigration:
 
 
 class TestInControlMigration:
-    def test_enabled_becomes_device(self) -> None:
+    """InControl is a top-level integration, not a device. Legacy
+    configs that had it in devices: get moved back to the top level.
+    A fresh top-level block is passed through untouched."""
+
+    def test_top_level_passthrough(self) -> None:
         cfg = {
             "devices": {},
             "incontrol": {
@@ -185,27 +189,27 @@ class TestInControlMigration:
             },
         }
         out = _migrate_legacy_config(copy.deepcopy(cfg))
-        assert "incontrol" not in out
-        d = out["devices"]["incontrol"]
-        assert d["kind"] == "incontrol"
-        assert d["enabled"] is True
-        assert d["org_id"] == "org-abc"
-        assert d["poll_interval"] == 120
-        assert d["event_limit"] == 50
-
-    def test_disabled_not_synthesized(self) -> None:
-        cfg = {"devices": {}, "incontrol": {"enabled": False, "org_id": "x"}}
-        out = _migrate_legacy_config(copy.deepcopy(cfg))
-        # Disabled integrations don't need a device entry — but the
-        # key is still popped so startup's legacy branch never runs.
         assert "incontrol" not in out["devices"]
-        assert "incontrol" not in out
+        assert out["incontrol"]["enabled"] is True
+        assert out["incontrol"]["org_id"] == "org-abc"
+
+    def test_legacy_device_moves_back_to_top_level(self) -> None:
+        cfg = {"devices": {"incontrol": {
+            "kind": "incontrol", "enabled": True,
+            "org_id": "org-abc", "poll_interval": 90, "event_limit": 25,
+        }}}
+        out = _migrate_legacy_config(copy.deepcopy(cfg))
+        assert "incontrol" not in out["devices"]
+        assert out["incontrol"]["enabled"] is True
+        assert out["incontrol"]["org_id"] == "org-abc"
+        assert out["incontrol"]["poll_interval"] == 90
+        assert out["incontrol"]["event_limit"] == 25
 
     def test_missing_incontrol_block_is_noop(self) -> None:
         cfg = {"devices": {"gateway": {"kind": "unifi_network",
                                        "host": "1.1.1.1", "username": "a"}}}
         out = _migrate_legacy_config(copy.deepcopy(cfg))
-        assert "incontrol" not in out["devices"]
+        assert "incontrol" not in out.get("devices", {})
 
 
 # ------ real-config fixture (the committed example config.yaml) -----------
@@ -254,12 +258,6 @@ class TestEditViewRoundTrip:
         assert view["count"] == 1
         assert view["timeout"] == 2
         assert view["interval"] == 5
-
-    def test_incontrol_defaults(self) -> None:
-        raw = {"kind": "incontrol", "enabled": True, "org_id": "abc"}
-        view = _device_edit_view("incontrol", raw)
-        assert view["poll_interval"] == 60
-        assert view["event_limit"] == 30
 
     def test_put_empty_password_preserves_previous(self) -> None:
         previous = {"kind": "peplink_router", "host": "1.1.1.1",

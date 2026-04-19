@@ -24,7 +24,7 @@ class TestAppearance:
         assert r.status_code == 200
         body = r.json()
         for kind in ("peplink_router", "unifi_network", "peplink_derived",
-                     "icmp_ping", "incontrol"):
+                     "icmp_ping"):
             assert kind in body
 
     def test_peplink_router_defaults_match_dashboard(self, api_client):

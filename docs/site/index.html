@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>NetMon — real-time home + mobile network dashboard</title>
+  <meta name="description" content="NetMon is a personal network monitor: polls your UniFi gateway, Peplink routers, and ICMP ping targets; pairs with an iOS app over your LAN via QR code." />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="hero">
+    <h1>NetMon</h1>
+    <p class="tagline">Real-time home + mobile network dashboard.</p>
+    <p class="sub">Polls your UniFi gateway, Peplink routers, and ping targets every few seconds. Pairs with the iOS app over your LAN.</p>
+    <div class="cta">
+      <a class="btn primary" href="https://github.com/gbellas/netmon-server/releases/latest/download/NetMonServer.dmg">Download for macOS</a>
+      <a class="btn secondary" href="APP_STORE_URL_TBD">iOS App (App Store)</a>
+    </div>
+    <p class="tiny">Requires macOS 13+. Signed &amp; notarized. Free &amp; open source.</p>
+  </header>
+
+  <section class="grid">
+    <div class="card">
+      <h2>1. Install the server</h2>
+      <p>Download the DMG, drag NetMon.app to Applications, then launch it. It runs as a menu-bar app — click the icon to see the server URL and pairing QR code.</p>
+    </div>
+    <div class="card">
+      <h2>2. Pair your iPhone</h2>
+      <p>Install the iOS app from the App Store, tap "Scan QR", and point it at the menu-bar QR code. Pairing stays on your LAN — no cloud account.</p>
+    </div>
+    <div class="card">
+      <h2>3. Watch your network</h2>
+      <p>Your devices appear on the dashboard as cards. Configure alerts, thresholds, and layouts in the iOS app's Settings tab.</p>
+    </div>
+  </section>
+
+  <section class="links">
+    <h2>Source &amp; support</h2>
+    <ul>
+      <li><a href="https://github.com/gbellas/netmon-server">Server source on GitHub</a></li>
+      <li><a href="https://github.com/gbellas/netmon-app">iOS app source on GitHub</a></li>
+      <li><a href="https://github.com/gbellas/netmon-server/issues">Report a bug</a></li>
+    </ul>
+  </section>
+
+  <footer>
+    <p>NetMon is a hobby project. No telemetry, no ads, no accounts.</p>
+  </footer>
+</body>
+</html>

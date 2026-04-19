@@ -15,7 +15,9 @@ from pollers.drivers.peplink_router import PeplinkRouterDriver
 from pollers.drivers.peplink_derived import PeplinkDerivedDriver
 from pollers.drivers.unifi_network import UniFiNetworkDriver
 from pollers.drivers.icmp_ping import IcmpPingDriver
-from pollers.drivers.incontrol import InControlDriver
+# InControl is no longer a driver — it's a top-level integration
+# (see `/api/integrations/incontrol` in server.py). Its former tests now
+# live in test_integration.py / test_migration.py.
 
 
 class TestRegistry:
@@ -28,7 +30,6 @@ class TestRegistry:
             "peplink_derived",
             "unifi_network",
             "icmp_ping",
-            "incontrol",
         }
 
     def test_get_driver_returns_class(self) -> None:
@@ -427,15 +428,6 @@ class TestSetWanEnabled:
         drv = IcmpPingDriver(spec)
         import asyncio as _asyncio
         with pytest.raises(NotImplementedError, match="WAN"):
-            _asyncio.run(drv.set_wan_enabled(1, True))
-
-    def test_incontrol_raises_not_implemented(self) -> None:
-        spec = DeviceSpec.from_config(
-            "ic", {"kind": "incontrol", "enabled": False},
-        )
-        drv = InControlDriver(spec)
-        import asyncio as _asyncio
-        with pytest.raises(NotImplementedError, match="cloud"):
             _asyncio.run(drv.set_wan_enabled(1, True))
 
     def test_peplink_router_happy_path_via_mocked_session(
