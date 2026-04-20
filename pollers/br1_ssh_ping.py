@@ -192,6 +192,11 @@ class PeplinkSshPingPoller(BasePoller):
                 child = await loop.run_in_executor(None, _spawn_and_login)
                 self.logger.info(f"SSH stream open: {name} ({host})")
                 backoff = 1.0
+                # Clear any prior error so the UI stops showing it.
+                await self._broadcast({
+                    f"{prefix}.error_category": "",
+                    f"{prefix}.error_message": "",
+                })
 
                 # Streaming loop: kick off back-to-back ping bursts and parse every line
                 patterns = [PACKET_RE.pattern, SUMMARY_RE.pattern, RTT_RE.pattern, self._prompt_regex, pexpect.TIMEOUT]
@@ -305,14 +310,33 @@ class PeplinkSshPingPoller(BasePoller):
                     except Exception: pass
                 raise
             except Exception as e:
+                # Classify so the UI can tell auth failures from network
+                # failures from protocol failures. String keys here are
+                # stable contract with the iOS app's PingTargetSnapshot.
+                err_cls = type(e).__name__
+                err_msg = str(e) or err_cls
+                # pexpect.EOF on login = bad creds OR SSH disabled on target.
+                # pexpect.TIMEOUT on login = host unreachable / port blocked.
+                # pexpect.EOF mid-stream = session dropped.
+                if err_cls == "EOF" or "authentication" in err_msg.lower() or "permission denied" in err_msg.lower():
+                    category = "auth_failed"
+                    summary = "SSH auth failed — check username/password"
+                elif err_cls == "TIMEOUT":
+                    category = "unreachable"
+                    summary = "SSH host unreachable — check hostname/port"
+                else:
+                    category = "error"
+                    summary = f"{err_cls}: {err_msg[:120]}"
                 self.logger.warning(
-                    f"SSH stream {name}: {type(e).__name__}: {e}. Reconnecting in {backoff:.1f}s"
+                    f"SSH stream {name}: {category}: {err_msg}. Reconnecting in {backoff:.1f}s"
                 )
                 # Clear stale metrics so the UI doesn't show last-good values while
                 # the tunnel/device is actually unreachable. When the ping stream
                 # is broken we have no ground truth — treat it as unknown, not OK.
                 await self._broadcast({
                     f"{prefix}.status": "reconnecting",
+                    f"{prefix}.error_category": category,
+                    f"{prefix}.error_message": summary,
                     f"{prefix}.latency_ms": -1,
                     f"{prefix}.jitter_ms": -1,
                     f"{prefix}.avg_ms": -1,
