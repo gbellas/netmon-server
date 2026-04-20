@@ -19,8 +19,8 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.10"
-    MARKETING_VERSION: "0.1"
-    CURRENT_PROJECT_VERSION: "1"
+    MARKETING_VERSION: "0.2"
+    CURRENT_PROJECT_VERSION: "2"
     DEVELOPMENT_TEAM: "9ZB72X2V54"
     CODE_SIGN_STYLE: Automatic
     SWIFT_STRICT_CONCURRENCY: complete
@@ -43,8 +43,8 @@ targets:
       path: NetMonServer/Info.plist
       properties:
         CFBundleDisplayName: NetMon Server
-        CFBundleShortVersionString: "0.1"
-        CFBundleVersion: "1"
+        CFBundleShortVersionString: "0.2"
+        CFBundleVersion: "2"
         # LSUIElement + setActivationPolicy(.accessory) keep the app
         # menu-bar-only by default. The main window is opened on
         # demand; when visible, AppDelegate bumps policy to .regular
