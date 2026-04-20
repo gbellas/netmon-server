@@ -1,37 +1,51 @@
 import SwiftUI
 
-/// Settings window, opened from the menu bar. Intentionally minimal —
-/// this app is supposed to fade into the background once configured.
-/// The main "change stuff" surface is the iPhone app's Settings → Devices.
-struct PreferencesView: View {
+/// Server operator view — the Mac app's existing Preferences tabs
+/// (Overview + Logs) restructured to fit the main-window sidebar.
+/// Points at the same ServerController, so Start / Stop / Restart
+/// still flow through.
+struct ServerPane: View {
     @EnvironmentObject private var controller: ServerController
+    @State private var subtab: SubTab = .overview
 
-    var body: some View {
-        TabView {
-            overviewTab
-                .tabItem { Label("Overview", systemImage: "info.circle") }
-            logsTab
-                .tabItem { Label("Logs", systemImage: "doc.text") }
-        }
-        .padding(20)
+    enum SubTab: String, CaseIterable {
+        case overview = "Overview"
+        case logs     = "Logs"
     }
 
-    private var overviewTab: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("NetMon Server").font(.largeTitle.bold())
+    var body: some View {
+        VStack(spacing: 0) {
+            Picker("", selection: $subtab) {
+                ForEach(SubTab.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .padding(12)
             Divider()
-            row(label: "Status", value: controller.statusDescription,
+            Group {
+                switch subtab {
+                case .overview: overview
+                case .logs:     logs
+                }
+            }
+        }
+        .navigationTitle("Server")
+    }
+
+    private var overview: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            row("Status",
+                controller.statusDescription,
                 valueColor: controller.status.isRunning ? .green : .orange)
-            row(label: "URL",    value: controller.serverURL)
-            row(label: "Token",
-                value: controller.apiToken.map { "\($0.prefix(12))…" } ?? "(none)")
-            row(label: "Runtime dir", value: controller.runtimeDir.path,
-                mono: true, small: true)
+            row("URL", controller.serverURL, mono: true)
+            row("Token",
+                controller.apiToken.map { "\($0.prefix(12))…" } ?? "(none)",
+                mono: true)
+            row("Runtime dir", controller.runtimeDir.path, mono: true, small: true)
 
             Spacer()
 
             HStack {
-                Button("Open dashboard") {
+                Button("Open dashboard in browser") {
                     if let url = URL(string: controller.serverURL) {
                         NSWorkspace.shared.open(url)
                     }
@@ -50,14 +64,14 @@ struct PreferencesView: View {
                 }
             }
         }
+        .padding(16)
     }
 
-    private var logsTab: some View {
+    private var logs: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 2) {
-                    ForEach(Array(controller.logTail.enumerated()),
-                            id: \.offset) { (i, line) in
+                LazyVStack(alignment: .leading, spacing: 1) {
+                    ForEach(Array(controller.logTail.enumerated()), id: \.offset) { i, line in
                         Text(line)
                             .font(.system(.caption, design: .monospaced))
                             .textSelection(.enabled)
@@ -65,18 +79,18 @@ struct PreferencesView: View {
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 4)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
             }
             .onChange(of: controller.logTail.count) { _, new in
-                // Keep the view pinned to the bottom as new lines stream in.
                 if new > 0 { proxy.scrollTo(new - 1, anchor: .bottom) }
             }
         }
     }
 
     private func row(
-        label: String, value: String, valueColor: Color = .primary,
-        mono: Bool = false, small: Bool = false
+        _ label: String, _ value: String,
+        valueColor: Color = .primary, mono: Bool = false, small: Bool = false
     ) -> some View {
         HStack(alignment: .firstTextBaseline) {
             Text(label)
@@ -84,9 +98,8 @@ struct PreferencesView: View {
                 .frame(width: 110, alignment: .leading)
             Text(value)
                 .font(mono
-                      ? (small
-                         ? .system(.caption, design: .monospaced)
-                         : .system(.body, design: .monospaced))
+                      ? (small ? .system(.caption, design: .monospaced)
+                               : .system(.body, design: .monospaced))
                       : (small ? .caption : .body))
                 .foregroundStyle(valueColor)
                 .textSelection(.enabled)

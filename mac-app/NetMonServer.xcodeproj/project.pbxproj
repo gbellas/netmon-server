@@ -3,185 +3,181 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 46;
+	objectVersion = 77;
 	objects = {
 
 /* Begin PBXBuildFile section */
-		0AB967B6C735E0C2F4E9892C /* NetMonServerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F61DCCC5244B0F74A67E053F /* NetMonServerApp.swift */; };
-		3BE67A939450F2EF6496D174 /* PreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CEF3AE9689B8D7446B389E2 /* PreferencesView.swift */; };
-		3ED3121CBAB285CFE257ABEB /* SetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DD37E2F5B2A02D0888689B5 /* SetupView.swift */; };
-		B0B0B0B001000000WIZRD01 /* FirstRunWizard.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0B0B0B002000000WIZRD02 /* FirstRunWizard.swift */; };
-		4881ED18F1A9D1981F5E3240 /* Resources in Resources */ = {isa = PBXBuildFile; fileRef = 9CBB54908ED83B0C90B0DD0B /* Resources */; };
-		C97080BAF00CC840B7F236D7 /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 385D342B6B9AEE5E69A35B04 /* Cocoa.framework */; };
-		EE5ECDA523B7AE2025376136 /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20613E3682D175BBBAC518AB /* MenuBarView.swift */; };
-		A0A0A0A001000000UPDATEC1 /* UpdateChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0A0A0A002000000UPDATEC2 /* UpdateChecker.swift */; };
-		FBE41599130D1D3D77BB6AA9 /* ServerController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A6E645164863A4F17EAD975 /* ServerController.swift */; };
+		005BFF479B855BD68EDAF7B5 /* JSONValue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 262374C5506881D2B66ED506 /* JSONValue.swift */; };
+		06153F344A5F03EAC4201C33 /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F81591BD67C8AED8C7780EEB /* MenuBarView.swift */; };
+		21139ECAD15B6B289C7BF541 /* Resources in Resources */ = {isa = PBXBuildFile; fileRef = 2D2F0145E50EE07CF434625C /* Resources */; };
+		434DB9F49359A889D4ACA333 /* HistoryPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8519097DB1B32ABA90519163 /* HistoryPane.swift */; };
+		6C9C3BEF97F5C93D4356A993 /* ServerPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AE48258FEBA1D0E79879564 /* ServerPane.swift */; };
+		8581BD04E15CBFC8CDB2D42E /* NetMonServerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D1075BC7B502696CA74B0E3 /* NetMonServerApp.swift */; };
+		91857B91DF633FCCFCA9BAAE /* DevicesPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6F1B79374194356345F24F3 /* DevicesPane.swift */; };
+		98072EB2C4BA07DFA2E87F5A /* FirstRunWizard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9610B930346072E93E57D4F4 /* FirstRunWizard.swift */; };
+		9BB09ACE8A90593FB73C1412 /* DataModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A595115F9B17CC4FA7FA51AB /* DataModels.swift */; };
+		BE3804D0F3FEF57C33033F9C /* DashboardPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03D76DEA76DE2EAB6ED274E3 /* DashboardPane.swift */; };
+		CD0CB0598CFAF35D9912992E /* EventsPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = E908AA93D769DB1B3AF1CC60 /* EventsPane.swift */; };
+		CFCF93010503C7D742766201 /* UpdateChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47C57A16498DDAA124C4125B /* UpdateChecker.swift */; };
+		E8363B60C93E4CC17E6B8050 /* SetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01E89838FE75636CDE06C5DD /* SetupView.swift */; };
+		E8662602FA2B68B1B9A1AA46 /* ServerController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 176759559F8E2010B4624D25 /* ServerController.swift */; };
+		EABFCA51A6895170EDFBFD4A /* MainWindowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2259112416CFB1243B1715D /* MainWindowView.swift */; };
+		FBF4FB630A67A444106C322D /* LocalAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F3E4D91239D6F5C56739021 /* LocalAPIClient.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		20613E3682D175BBBAC518AB /* MenuBarView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MenuBarView.swift; sourceTree = "<group>"; };
-		A0A0A0A002000000UPDATEC2 /* UpdateChecker.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = UpdateChecker.swift; sourceTree = "<group>"; };
-		385D342B6B9AEE5E69A35B04 /* Cocoa.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Cocoa.framework; path = Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.0.sdk/System/Library/Frameworks/Cocoa.framework; sourceTree = DEVELOPER_DIR; };
-		582FF1CFCAAD9C13631DE5C4 /* NetMonServer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = NetMonServer.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		5DD37E2F5B2A02D0888689B5 /* SetupView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SetupView.swift; sourceTree = "<group>"; };
-		B0B0B0B002000000WIZRD02 /* FirstRunWizard.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FirstRunWizard.swift; sourceTree = "<group>"; };
-		8CEF3AE9689B8D7446B389E2 /* PreferencesView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PreferencesView.swift; sourceTree = "<group>"; };
-		9A6E645164863A4F17EAD975 /* ServerController.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ServerController.swift; sourceTree = "<group>"; };
-		9CBB54908ED83B0C90B0DD0B /* Resources */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder; name = Resources; path = Resources; sourceTree = "<group>"; };
-		DE206BE1230D504A78027703 /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		F61DCCC5244B0F74A67E053F /* NetMonServerApp.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NetMonServerApp.swift; sourceTree = "<group>"; };
+		01E89838FE75636CDE06C5DD /* SetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetupView.swift; sourceTree = "<group>"; };
+		03D76DEA76DE2EAB6ED274E3 /* DashboardPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardPane.swift; sourceTree = "<group>"; };
+		176759559F8E2010B4624D25 /* ServerController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerController.swift; sourceTree = "<group>"; };
+		262374C5506881D2B66ED506 /* JSONValue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSONValue.swift; sourceTree = "<group>"; };
+		2D2F0145E50EE07CF434625C /* Resources */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Resources; path = NetMonServer/Resources; sourceTree = SOURCE_ROOT; };
+		3F3E4D91239D6F5C56739021 /* LocalAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalAPIClient.swift; sourceTree = "<group>"; };
+		47C57A16498DDAA124C4125B /* UpdateChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateChecker.swift; sourceTree = "<group>"; };
+		7AE48258FEBA1D0E79879564 /* ServerPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerPane.swift; sourceTree = "<group>"; };
+		8519097DB1B32ABA90519163 /* HistoryPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryPane.swift; sourceTree = "<group>"; };
+		8D1075BC7B502696CA74B0E3 /* NetMonServerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetMonServerApp.swift; sourceTree = "<group>"; };
+		9610B930346072E93E57D4F4 /* FirstRunWizard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirstRunWizard.swift; sourceTree = "<group>"; };
+		A2259112416CFB1243B1715D /* MainWindowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainWindowView.swift; sourceTree = "<group>"; };
+		A595115F9B17CC4FA7FA51AB /* DataModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataModels.swift; sourceTree = "<group>"; };
+		E908AA93D769DB1B3AF1CC60 /* EventsPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventsPane.swift; sourceTree = "<group>"; };
+		EA1174A88D9C6D83C5B178A5 /* NetMonServer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = NetMonServer.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		F6F1B79374194356345F24F3 /* DevicesPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevicesPane.swift; sourceTree = "<group>"; };
+		F81591BD67C8AED8C7780EEB /* MenuBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
-/* Begin PBXFrameworksBuildPhase section */
-		CB3963832393A3B396B829FE /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				C97080BAF00CC840B7F236D7 /* Cocoa.framework in Frameworks */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-/* End PBXFrameworksBuildPhase section */
-
 /* Begin PBXGroup section */
-		5423A0334DA9806DE59710EC /* Frameworks */ = {
+		6A1C28D286289DFAED71F06F /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				730231FE340E9BDD1282B1C0 /* OS X */,
-			);
-			name = Frameworks;
-			sourceTree = "<group>";
-		};
-		5964B959F7326F7324480311 /* NetMonServer */ = {
-			isa = PBXGroup;
-			children = (
-				F61DCCC5244B0F74A67E053F /* NetMonServerApp.swift */,
-				9A6E645164863A4F17EAD975 /* ServerController.swift */,
-				20613E3682D175BBBAC518AB /* MenuBarView.swift */,
-				A0A0A0A002000000UPDATEC2 /* UpdateChecker.swift */,
-				5DD37E2F5B2A02D0888689B5 /* SetupView.swift */,
-				B0B0B0B002000000WIZRD02 /* FirstRunWizard.swift */,
-				8CEF3AE9689B8D7446B389E2 /* PreferencesView.swift */,
-				DE206BE1230D504A78027703 /* Info.plist */,
-				D870243258214B2280834FE2 /* Resources */,
-				9CBB54908ED83B0C90B0DD0B /* Resources */,
-			);
-			name = NetMonServer;
-			path = NetMonServer;
-			sourceTree = "<group>";
-		};
-		730231FE340E9BDD1282B1C0 /* OS X */ = {
-			isa = PBXGroup;
-			children = (
-				385D342B6B9AEE5E69A35B04 /* Cocoa.framework */,
-			);
-			name = "OS X";
-			sourceTree = "<group>";
-		};
-		915E153A83ABD6EA7A0E0249 /* Products */ = {
-			isa = PBXGroup;
-			children = (
-				582FF1CFCAAD9C13631DE5C4 /* NetMonServer.app */,
+				EA1174A88D9C6D83C5B178A5 /* NetMonServer.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
 		};
-		D0003FD2673CD9BCB7BF1F06 = {
+		82641A246B62140FC4ADF90A /* NetMonServer */ = {
 			isa = PBXGroup;
 			children = (
-				915E153A83ABD6EA7A0E0249 /* Products */,
-				5423A0334DA9806DE59710EC /* Frameworks */,
-				5964B959F7326F7324480311 /* NetMonServer */,
+				03D76DEA76DE2EAB6ED274E3 /* DashboardPane.swift */,
+				A595115F9B17CC4FA7FA51AB /* DataModels.swift */,
+				F6F1B79374194356345F24F3 /* DevicesPane.swift */,
+				E908AA93D769DB1B3AF1CC60 /* EventsPane.swift */,
+				9610B930346072E93E57D4F4 /* FirstRunWizard.swift */,
+				8519097DB1B32ABA90519163 /* HistoryPane.swift */,
+				262374C5506881D2B66ED506 /* JSONValue.swift */,
+				3F3E4D91239D6F5C56739021 /* LocalAPIClient.swift */,
+				A2259112416CFB1243B1715D /* MainWindowView.swift */,
+				F81591BD67C8AED8C7780EEB /* MenuBarView.swift */,
+				8D1075BC7B502696CA74B0E3 /* NetMonServerApp.swift */,
+				2D2F0145E50EE07CF434625C /* Resources */,
+				176759559F8E2010B4624D25 /* ServerController.swift */,
+				7AE48258FEBA1D0E79879564 /* ServerPane.swift */,
+				01E89838FE75636CDE06C5DD /* SetupView.swift */,
+				47C57A16498DDAA124C4125B /* UpdateChecker.swift */,
 			);
+			path = NetMonServer;
 			sourceTree = "<group>";
 		};
-		D870243258214B2280834FE2 /* Resources */ = {
+		F717E33F1DD146218B678EEF = {
 			isa = PBXGroup;
 			children = (
+				82641A246B62140FC4ADF90A /* NetMonServer */,
+				6A1C28D286289DFAED71F06F /* Products */,
 			);
-			name = Resources;
-			path = Resources;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		0D80903A99FE78DFD43D088B /* NetMonServer */ = {
+		FCC3B64EB8A18154BEC5E78F /* NetMonServer */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 3D6D5DD00138AC8974915437 /* Build configuration list for PBXNativeTarget "NetMonServer" */;
+			buildConfigurationList = 4A6EBBE6BF2CC72BF7BD0884 /* Build configuration list for PBXNativeTarget "NetMonServer" */;
 			buildPhases = (
-				0DD442DB4F9CC41DDCB12B3C /* Sources */,
-				CB3963832393A3B396B829FE /* Frameworks */,
-				0923FE74EC86858AF569AA60 /* Resources */,
+				D7F7815478F54A69B0C90E16 /* Sources */,
+				9FCF07DCDA9D249A01016838 /* Resources */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 			);
 			name = NetMonServer;
+			packageProductDependencies = (
+			);
 			productName = NetMonServer;
-			productReference = 582FF1CFCAAD9C13631DE5C4 /* NetMonServer.app */;
+			productReference = EA1174A88D9C6D83C5B178A5 /* NetMonServer.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
-		0130B4E6578FA05AC93E4A46 /* Project object */ = {
+		31DEC48F043664CB74E359F7 /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
-				LastSwiftUpdateCheck = 1600;
-				LastUpgradeCheck = 1600;
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					FCC3B64EB8A18154BEC5E78F = {
+						DevelopmentTeam = 9ZB72X2V54;
+						ProvisioningStyle = Automatic;
+					};
+				};
 			};
-			buildConfigurationList = 4141C7840205106AF382B92D /* Build configuration list for PBXProject "NetMonServer" */;
-			compatibilityVersion = "Xcode 3.2";
+			buildConfigurationList = 81FA1BCE7E50384468727A40 /* Build configuration list for PBXProject "NetMonServer" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
-				en,
 				Base,
+				en,
 			);
-			mainGroup = D0003FD2673CD9BCB7BF1F06;
-			minimizedProjectReferenceProxies = 0;
+			mainGroup = F717E33F1DD146218B678EEF;
+			minimizedProjectReferenceProxies = 1;
 			preferredProjectObjectVersion = 77;
-			productRefGroup = 915E153A83ABD6EA7A0E0249 /* Products */;
+			productRefGroup = 6A1C28D286289DFAED71F06F /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				0D80903A99FE78DFD43D088B /* NetMonServer */,
+				FCC3B64EB8A18154BEC5E78F /* NetMonServer */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		0923FE74EC86858AF569AA60 /* Resources */ = {
+		9FCF07DCDA9D249A01016838 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				4881ED18F1A9D1981F5E3240 /* Resources in Resources */,
+				21139ECAD15B6B289C7BF541 /* Resources in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		0DD442DB4F9CC41DDCB12B3C /* Sources */ = {
+		D7F7815478F54A69B0C90E16 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				0AB967B6C735E0C2F4E9892C /* NetMonServerApp.swift in Sources */,
-				FBE41599130D1D3D77BB6AA9 /* ServerController.swift in Sources */,
-				EE5ECDA523B7AE2025376136 /* MenuBarView.swift in Sources */,
-				A0A0A0A001000000UPDATEC1 /* UpdateChecker.swift in Sources */,
-				3ED3121CBAB285CFE257ABEB /* SetupView.swift in Sources */,
-				B0B0B0B001000000WIZRD01 /* FirstRunWizard.swift in Sources */,
-				3BE67A939450F2EF6496D174 /* PreferencesView.swift in Sources */,
+				BE3804D0F3FEF57C33033F9C /* DashboardPane.swift in Sources */,
+				9BB09ACE8A90593FB73C1412 /* DataModels.swift in Sources */,
+				91857B91DF633FCCFCA9BAAE /* DevicesPane.swift in Sources */,
+				CD0CB0598CFAF35D9912992E /* EventsPane.swift in Sources */,
+				98072EB2C4BA07DFA2E87F5A /* FirstRunWizard.swift in Sources */,
+				434DB9F49359A889D4ACA333 /* HistoryPane.swift in Sources */,
+				005BFF479B855BD68EDAF7B5 /* JSONValue.swift in Sources */,
+				FBF4FB630A67A444106C322D /* LocalAPIClient.swift in Sources */,
+				EABFCA51A6895170EDFBFD4A /* MainWindowView.swift in Sources */,
+				06153F344A5F03EAC4201C33 /* MenuBarView.swift in Sources */,
+				8581BD04E15CBFC8CDB2D42E /* NetMonServerApp.swift in Sources */,
+				E8662602FA2B68B1B9A1AA46 /* ServerController.swift in Sources */,
+				6C9C3BEF97F5C93D4356A993 /* ServerPane.swift in Sources */,
+				E8363B60C93E4CC17E6B8050 /* SetupView.swift in Sources */,
+				CFCF93010503C7D742766201 /* UpdateChecker.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
-		3231A44575F4785C86682A67 /* Debug */ = {
+		3CAB2632860D703D002E7482 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -214,8 +210,11 @@
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
 				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = 9ZB72X2V54;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
@@ -223,8 +222,8 @@
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_OPTIMIZATION_LEVEL = 0;
 				GCC_PREPROCESSOR_DEFINITIONS = (
-					"DEBUG=1",
 					"$(inherited)",
+					"DEBUG=1",
 				);
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
 				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
@@ -232,65 +231,59 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 0.1;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
-				SWIFT_VERSION = 5.0;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 5.10;
 			};
 			name = Debug;
 		};
-		4F4F3EBC2A1D9322D8283471 /* Debug */ = {
+		6F55D08F9B0CC7EAC3C03064 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = NetMonServer/NetMonServer.entitlements;
-				CODE_SIGN_IDENTITY = "Apple Development";
-				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 9ZB72X2V54;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = NetMonServer/Info.plist;
-				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.1;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.gbellas.netmon.server;
 				PRODUCT_NAME = "NetMon Server";
 				SDKROOT = macosx;
-				SWIFT_VERSION = 5.0;
 			};
 			name = Debug;
 		};
-		B2D17192B5CD4E514E759A03 /* Release */ = {
+		A2B3DEADD1924D16B7B85D59 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = NetMonServer/NetMonServer.entitlements;
-				CODE_SIGN_IDENTITY = "Apple Development";
-				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 9ZB72X2V54;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = NetMonServer/Info.plist;
-				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.1;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.gbellas.netmon.server;
 				PRODUCT_NAME = "NetMon Server";
 				SDKROOT = macosx;
-				SWIFT_VERSION = 5.0;
 			};
 			name = Release;
 		};
-		CA61446057C499A95D92CEFD /* Release */ = {
+		FA2CCF65AE60AA44F774F827 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -323,8 +316,11 @@
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = 9ZB72X2V54;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
@@ -335,37 +331,41 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 0.1;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
-				SWIFT_VERSION = 5.0;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 5.10;
 			};
 			name = Release;
 		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		3D6D5DD00138AC8974915437 /* Build configuration list for PBXNativeTarget "NetMonServer" */ = {
+		4A6EBBE6BF2CC72BF7BD0884 /* Build configuration list for PBXNativeTarget "NetMonServer" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				B2D17192B5CD4E514E759A03 /* Release */,
-				4F4F3EBC2A1D9322D8283471 /* Debug */,
+				6F55D08F9B0CC7EAC3C03064 /* Debug */,
+				A2B3DEADD1924D16B7B85D59 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
+			defaultConfigurationName = Debug;
 		};
-		4141C7840205106AF382B92D /* Build configuration list for PBXProject "NetMonServer" */ = {
+		81FA1BCE7E50384468727A40 /* Build configuration list for PBXProject "NetMonServer" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				3231A44575F4785C86682A67 /* Debug */,
-				CA61446057C499A95D92CEFD /* Release */,
+				3CAB2632860D703D002E7482 /* Debug */,
+				FA2CCF65AE60AA44F774F827 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
+			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
 	};
-	rootObject = 0130B4E6578FA05AC93E4A46 /* Project object */;
+	rootObject = 31DEC48F043664CB74E359F7 /* Project object */;
 }

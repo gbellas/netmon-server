@@ -2,47 +2,31 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundleDevelopmentRegion</key>
-    <string>$(DEVELOPMENT_LANGUAGE)</string>
-    <key>CFBundleDisplayName</key>
-    <string>NetMon Server</string>
-    <key>CFBundleExecutable</key>
-    <string>$(EXECUTABLE_NAME)</string>
-    <key>CFBundleIdentifier</key>
-    <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
-    <key>CFBundleInfoDictionaryVersion</key>
-    <string>6.0</string>
-    <key>CFBundleName</key>
-    <string>$(PRODUCT_NAME)</string>
-    <key>CFBundlePackageType</key>
-    <string>APPL</string>
-    <key>CFBundleShortVersionString</key>
-    <string>1.0</string>
-    <key>CFBundleVersion</key>
-    <string>1</string>
-    <!--
-        LSUIElement hides us from the Dock + Cmd-Tab switcher. This is
-        a menu-bar-only utility, users peek at it via the status bar
-        icon. AppDelegate also calls setActivationPolicy(.accessory)
-        at launch as belt-and-suspenders.
-    -->
-    <key>LSUIElement</key>
-    <true/>
-    <!--
-        Minimum macOS version: 13 Ventura for `MenuBarExtra` and the
-        `Window` scene with id-based openWindow. macOS 12 would work
-        with an NSStatusItem fallback but isn't worth the extra code.
-    -->
-    <key>LSMinimumSystemVersion</key>
-    <string>14.0</string>
-    <key>NSHighResolutionCapable</key>
-    <true/>
-    <!--
-        Required on macOS 15+ for local-network access. The server's
-        pollers talk to routers on 192.168.* / 10.* / etc., which
-        triggers the same Local Network consent prompt as the iOS app.
-    -->
-    <key>NSLocalNetworkUsageDescription</key>
-    <string>NetMon Server polls your routers and other network devices on your LAN to show their status in the NetMon iPhone app.</string>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleDisplayName</key>
+	<string>NetMon Server</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.1</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>NetMon Server polls your routers and other network devices on your LAN to show their status.</string>
 </dict>
 </plist>

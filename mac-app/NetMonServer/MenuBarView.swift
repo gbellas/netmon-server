@@ -49,12 +49,18 @@ struct MenuBarContent: View {
 
         Divider()
 
-        Button(controller.isFirstRun ? "Run setup…" : "Preferences…") {
-            // `openWindow` in SwiftUI navigates to a `Window` scene by
-            // id. We declared both "setup" and "preferences" windows
-            // in the App body so either route works.
-            openWindow(id: controller.isFirstRun ? "setup" : "preferences")
-            NSApp.activate(ignoringOtherApps: true)
+        if controller.isFirstRun {
+            Button("Run setup…") {
+                openWindow(id: "setup")
+                NSApp.activate(ignoringOtherApps: true)
+            }
+        } else {
+            Button("Show NetMon") {
+                openWindow(id: "main")
+                NSApp.setActivationPolicy(.regular)
+                NSApp.activate(ignoringOtherApps: true)
+            }
+            .keyboardShortcut("0", modifiers: [.command])
         }
 
         Divider()

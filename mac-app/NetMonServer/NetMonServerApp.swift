@@ -38,14 +38,15 @@ struct NetMonServerApp: App {
         }
         .menuBarExtraStyle(.menu)
 
-        // Optional "dashboard-like" window for settings. Not the same
-        // as the iPhone dashboard — this is the server's own knobs:
-        // port, auto-start, logs. Hidden by default; user opens from
-        // the menu.
-        Window("NetMon Server", id: "preferences") {
-            PreferencesView()
+        // Main window — full NetMon UI (Dashboard / Devices / Events /
+        // History / Server). Opened from the menu bar's "Show NetMon"
+        // item, or auto-opened at launch once setup is complete.
+        // The "preferences" id is preserved for back-compat with the
+        // old menu-bar binding; both point at the same scene.
+        Window("NetMon", id: "main") {
+            MainWindowView()
                 .environmentObject(controller)
-                .frame(minWidth: 540, minHeight: 420)
+                .frame(minWidth: 900, minHeight: 600)
         }
         .windowResizability(.contentSize)
         .defaultPosition(.center)
