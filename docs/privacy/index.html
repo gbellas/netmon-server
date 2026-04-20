@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NetMon — Privacy Policy</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Privacy Policy</h1>
+      <p class="tagline">Plain English. Last updated 2026-04-19.</p>
+    </header>
+
+    <section>
+      <h2>Short version</h2>
+      <p>NetMon collects no data, runs no analytics, and sends nothing to any third party.</p>
+      <ul>
+        <li>All communication happens between your iPhone/iPad and the NetMon Server you run on your own hardware.</li>
+        <li>No telemetry, no crash-reporter-as-a-service, no advertising IDs.</li>
+        <li>No accounts, no sign-in, no email required.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>What NetMon touches</h2>
+      <dl>
+        <dt>Your server URL + API token</dt>
+        <dd>Stored in the iOS Keychain on your device. Never synced to iCloud. Used only to talk to your NetMon Server.</dd>
+
+        <dt>Router credentials</dt>
+        <dd>Entered on your Mac in the NetMon Server's setup, stored locally on that Mac. The iOS app never sees or handles them.</dd>
+
+        <dt>Network-device data (WAN status, throughput, signal, etc.)</dt>
+        <dd>Fetched from your routers by the server, relayed to the iPhone over the network you've configured. This data never leaves your hardware.</dd>
+
+        <dt>Optional push notifications</dt>
+        <dd>If you enable push, your device's APNs token is stored on the server you paired with. It's used only by that server, only to push your own alerts to your own device.</dd>
+
+        <dt>Optional InControl 2 cloud integration</dt>
+        <dd>If you configure it, the NetMon Server talks directly to Peplink's InControl 2 API using credentials you provide. NetMon itself never brokers or caches those credentials elsewhere.</dd>
+      </dl>
+    </section>
+
+    <section>
+      <h2>What NetMon does not do</h2>
+      <ul>
+        <li>No third-party SDKs. No Firebase, no Mixpanel, no Sentry-as-a-service, no Amplitude, no advertising networks.</li>
+        <li>No background data collection.</li>
+        <li>No sale or sharing of any information, because there isn't any to share.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Children</h2>
+      <p>NetMon is not directed at children under 13. The app has no content aimed at children and does not knowingly collect any data from anyone.</p>
+    </section>
+
+    <section>
+      <h2>Changes</h2>
+      <p>If this policy ever changes, the update date at the top of this page will reflect it. For a running log of the app, see the <a href="https://github.com/gbellas/netmon-server">public source repository</a>.</p>
+    </section>
+
+    <section>
+      <h2>Contact</h2>
+      <p>Questions about this policy: <a href="mailto:gabrielbellas@gmail.com">gabrielbellas@gmail.com</a>.</p>
+    </section>
+  </main>
+
+  <footer>
+    <p><a href="../">&larr; Back to NetMon home</a></p>
+    <p class="tiny">&copy; 2026 Gabriel Bellas &middot; Source-available (noncommercial)</p>
+  </footer>
+</body>
+</html>
