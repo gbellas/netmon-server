@@ -414,10 +414,12 @@ class TestSetWanEnabled:
         bodies = [c[1] for c in captured]
         assert "https://1.2.3.4/api/config.wan.connection" in urls
         assert "https://1.2.3.4/api/cmd.config.apply" in urls
-        # The wan.connection call must carry the {id, enable} body.
+        # The wan.connection call must carry the nested `{<idx>: {enable}}`
+        # body — Peplink ignored the flat `{id, enable}` form for cellular
+        # WANs on at least BR1 firmware 8.5.4.
         wan_call = next(c for c in captured
                         if c[0].endswith("config.wan.connection"))
-        assert wan_call[1] == {"id": 2, "enable": False}
+        assert wan_call[1] == {"2": {"enable": False}}
 
 
 # ---- Peplink driver: carrier / RAT / SF control contracts --------------

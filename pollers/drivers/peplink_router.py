@@ -198,7 +198,12 @@ class PeplinkRouterDriver:
         `{id: <wan_index>, enable: <bool>}` is the documented body.
         """
         spec = self.spec
-        body = {"id": int(wan_index), "enable": bool(enabled)}
+        # Peplink's /api/config.wan.connection expects the nested shape
+        # `{"<wan_index>": {"enable": <bool>}}`. The flat shape
+        # `{id, enable}` returned HTTP 200 but Peplink silently ignored
+        # the change — echoed back the previous enable state. Cellular
+        # WANs in particular were never flipped.
+        body = {str(int(wan_index)): {"enable": bool(enabled)}}
 
         # Preferred path: piggyback on the poller's live session.
         rest = self._rest_poller
