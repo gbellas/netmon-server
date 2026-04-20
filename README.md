@@ -70,4 +70,6 @@ access (Tailscale / WireGuard / reverse-proxy HTTPS).
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+**PolyForm Noncommercial 1.0.0** — see [LICENSE](LICENSE).
+
+Personal and noncommercial use (research, hobby, self-hosted home networks, nonprofits) is freely permitted. Commercial or paid-service use requires a separate license from the author.
