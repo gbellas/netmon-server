@@ -363,7 +363,13 @@ def _merge_preserving_secrets(previous: dict, incoming: dict) -> dict:
     merged: dict = copy.deepcopy(previous)
     for k, v in incoming.items():
         if isinstance(v, dict) and isinstance(merged.get(k), dict):
-            merged[k] = _merge_preserving_secrets(merged[k], v)
+            # Empty dict = "wipe this container entirely". Without this
+            # carve-out, e.g. PUT'ing wan_overrides={} would preserve
+            # whatever was there before (user can't remove keys).
+            if not v:
+                merged[k] = {}
+            else:
+                merged[k] = _merge_preserving_secrets(merged[k], v)
         elif k in _SECRET_KEYS and v == "":
             # Preserve previous value when the client sends empty
             # (sentinel for "don't change").
