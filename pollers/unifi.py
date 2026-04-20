@@ -217,6 +217,32 @@ class UniFiPoller(BasePoller):
         except Exception as e:
             self.logger.warning(f"Device endpoint error: {e}")
 
+        # networkconf -- authoritative source for WAN *enable* state.
+        # stat/device's wan1.enable reflects PORT enable, not whether the
+        # WAN network config is set to wan_type=disabled (which is how the
+        # UDM controller disables a WAN — see controls_udm.set_wan_enable).
+        # Without this override, a disabled WAN keeps reporting enable:true
+        # and the app's per-WAN power toggle never updates its visual state.
+        try:
+            nc_data = await self._api_get("/proxy/network/api/s/default/rest/networkconf")
+            for nc in nc_data.get("data", []):
+                if nc.get("purpose") != "wan":
+                    continue
+                ng = (nc.get("wan_networkgroup") or "").upper()
+                wan_slot = "wan1" if ng in ("WAN", "WAN1") else "wan2" if ng == "WAN2" else None
+                if wan_slot is None:
+                    continue
+                wan_type = nc.get("wan_type") or ""
+                cfg_enabled = wan_type != "disabled"
+                updates[f"udm.{wan_slot}.enable"] = cfg_enabled
+                updates[f"udm.{wan_slot}.wan_type"] = wan_type
+                if not cfg_enabled:
+                    # Re-derive status: a networkconf-disabled WAN is never
+                    # "connected" even if the port happens to be up.
+                    updates[f"udm.{wan_slot}.status"] = "disabled"
+        except Exception as e:
+            self.logger.warning(f"networkconf endpoint error: {e}")
+
         # v2 speedtest history — publish latest per-WAN result so both WAN
         # rows show a number even without clicking Run. UniFi's scheduled
         # speedtest populates this automatically; manual runs append to it too.
