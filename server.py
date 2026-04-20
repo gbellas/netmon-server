@@ -335,32 +335,38 @@ _SECRET_KEYS = ("password", "client_secret", "secret", "auth_token")
 
 
 def _merge_preserving_secrets(previous: dict, incoming: dict) -> dict:
-    """Return `incoming` with any empty-string secret falling back to the
-    value from `previous`.
+    """Overlay `incoming` onto `previous`, with two guarantees:
 
-    Rationale: GET redacts passwords to "" so they never traverse the
-    wire. The editor PUTs the form back verbatim. Without this merge
-    every round-trip would wipe the password. Operators then either
-    have to re-type every secret on every edit (friction) or the
-    client has to track which fields are "sentinel redacted" vs
-    actually-empty (complexity the server is better placed to solve).
+    1. Any key present in `previous` but *absent* from `incoming` is
+       preserved. Pre-2026-04-20 behavior iterated only `incoming`
+       keys, silently dropping anything the editor didn't re-send —
+       which was every legacy key and, more painfully, the device
+       password (the editor leaves the password field blank when it
+       isn't being changed and writes no `password` key at all). The
+       result: save-without-retyping-password wiped REST auth and
+       killed the device.
+    2. An empty-string value for a secret key (`password`,
+       `client_secret`, etc.) falls back to the previous value —
+       supports the "password field shows blank but don't clobber"
+       UX when the client DOES send an explicit empty string.
 
-    Only empty *strings* trigger the fallback — explicit `null`
-    survives, which is how a caller deliberately clears a password.
-    Recurses into nested dicts (catches `ssh.password`) but NOT into
-    lists; our secrets don't live in list elements.
+    Explicit `null` survives, which is how a caller deliberately
+    clears a password. Recurses into nested dicts (catches
+    `ssh.password`) but NOT into lists; our secrets don't live in
+    list elements.
     """
     import copy
     if not isinstance(incoming, dict) or not isinstance(previous, dict):
         return copy.deepcopy(incoming)
 
-    merged: dict = {}
+    # Start from a deep copy of previous, then overlay incoming.
+    merged: dict = copy.deepcopy(previous)
     for k, v in incoming.items():
-        if isinstance(v, dict):
-            merged[k] = _merge_preserving_secrets(previous.get(k) or {}, v)
+        if isinstance(v, dict) and isinstance(merged.get(k), dict):
+            merged[k] = _merge_preserving_secrets(merged[k], v)
         elif k in _SECRET_KEYS and v == "":
-            # Preserve whatever was there before, including if it was
-            # also empty (nothing to preserve = still empty).
+            # Preserve previous value when the client sends empty
+            # (sentinel for "don't change").
             merged[k] = previous.get(k, "")
         else:
             merged[k] = copy.deepcopy(v)
