@@ -173,11 +173,16 @@ class PeplinkSshPingPoller(BasePoller):
             try:
                 # Spawn + login (blocking, run in thread)
                 def _spawn_and_login():
+                    # Allow both `password` and `keyboard-interactive` —
+                    # UDM's PAM-based sshd uses keyboard-interactive by
+                    # default, so forcing password-only auth got an
+                    # EOF immediately. Peplink accepts either.
                     cmd = (
                         f"ssh -p {self.port} -o StrictHostKeyChecking=no "
                         f"-o UserKnownHostsFile=/dev/null "
-                        f"-o PreferredAuthentications=password "
+                        f"-o PreferredAuthentications=password,keyboard-interactive "
                         f"-o PubkeyAuthentication=no "
+                        f"-o NumberOfPasswordPrompts=1 "
                         f"-o ServerAliveInterval=15 "
                         f"-o ServerAliveCountMax=3 "
                         f"-o ConnectTimeout={self.ssh_timeout} "
