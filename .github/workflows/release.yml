@@ -106,13 +106,45 @@ jobs:
           echo "ASC_KEY_ID=$ASC_KEY_ID"       >> "$GITHUB_ENV"
           echo "ASC_ISSUER_ID=$ASC_ISSUER_ID" >> "$GITHUB_ENV"
 
-      - name: Build, sign, notarize, staple DMG
+      - name: Bundle Python + server code
         run: |
           set -euo pipefail
           cd mac-app
-          # Expects mac-app/scripts/build-dmg.sh to produce dist/NetMonServer.dmg
-          # (wraps xcodebuild + sign-and-notarize.sh + finish-notarization.sh).
+          ./scripts/prepare-python-bundle.sh
+
+      - name: Archive (Release)
+        run: |
+          set -euo pipefail
+          cd mac-app
+          # xcodegen ensures the .xcodeproj reflects current project.yml.
+          # Runner has it preinstalled; if that changes, add a setup step.
+          if ! command -v xcodegen >/dev/null 2>&1; then
+            brew install xcodegen
+          fi
+          xcodegen generate
+          rm -rf /tmp/netmon-mac-archive
+          xcodebuild \
+            -project NetMonServer.xcodeproj \
+            -scheme NetMonServer \
+            -configuration Release \
+            -archivePath /tmp/netmon-mac-archive/NetMonServer.xcarchive \
+            archive
+
+      - name: Sign + submit to notary + staple
+        run: |
+          set -euo pipefail
+          cd mac-app
+          ./scripts/sign-and-notarize.sh /tmp/netmon-mac-archive/NetMonServer.xcarchive
+
+      - name: Package DMG
+        run: |
+          set -euo pipefail
+          cd mac-app
           ./scripts/build-dmg.sh
+          # build-dmg.sh writes to /tmp/NetMonServer-<version>.dmg — stage it
+          # at a stable path the upload / release steps below expect.
+          mkdir -p dist
+          cp /tmp/NetMonServer-*.dmg "dist/NetMonServer.dmg"
           ls -la dist/
 
       - name: Upload DMG as workflow artifact (always)
