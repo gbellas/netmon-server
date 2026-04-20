@@ -147,7 +147,12 @@ class PeplinkRouterDriver:
                     # Password reuses the primary device password unless
                     # overridden (some Peplink setups use a separate
                     # 'radmin' account for SSH).
-                    "password":     ssh_cfg.get("password", spec.password),
+                    # Use the device's main password when the SSH block
+                    # doesn't override it. Treat empty strings the same as
+                    # missing — otherwise saves that don't re-type the SSH
+                    # password silently fall through to auth with "", which
+                    # fails on every Peplink / UniFi device.
+                    "password":     (ssh_cfg.get("password") or spec.password),
                     "targets":      ssh_cfg.get("targets", []),
                     "ssh_timeout":  ssh_cfg.get("ssh_timeout", 10),
                     "poll_interval": ssh_cfg.get("poll_interval", 30),

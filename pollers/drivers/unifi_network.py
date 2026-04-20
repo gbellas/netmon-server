@@ -96,7 +96,12 @@ class UniFiNetworkDriver:
                     "host":         spec.host,
                     "port":         ssh_cfg.get("port", 22),
                     "username":     ssh_cfg.get("username", "root"),
-                    "password":     ssh_cfg.get("password", spec.password),
+                    # Fallback to the device's main password when the SSH
+                    # block doesn't override it — and treat "" the same as
+                    # missing (the editor writes "" when the user doesn't
+                    # re-type the SSH password, which was silently breaking
+                    # auth downstream).
+                    "password":     (ssh_cfg.get("password") or spec.password),
                     "targets":      ssh_cfg.get("targets", []),
                     "ssh_timeout":  ssh_cfg.get("ssh_timeout", 10),
                     "poll_interval": ssh_cfg.get("poll_interval", 30),
