@@ -27,10 +27,6 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-import ssl
-
-import aiohttp
-
 from .base import DeviceSpec
 from ..peplink import PeplinkPoller
 from ..br1_ssh_ping import PeplinkSshPingPoller
@@ -183,86 +179,26 @@ class PeplinkRouterDriver:
         return pollers
 
     async def set_wan_enabled(self, wan_index: int, enabled: bool) -> dict:
-        """Toggle a WAN via the Peplink local REST API.
+        """Toggle a WAN via Peplink's MANGA api.cgi.
 
-        Strategy: reuse the REST poller's authenticated aiohttp session
-        so we don't pay for a separate login. If the REST poller hasn't
-        authenticated yet (e.g. the server is very new, or the router
-        was down at startup), fall through to a short-lived session that
-        logs in just for this call.
-
-        Uses the same `/api/config.wan.connection` endpoint the legacy
-        `controls.py` / `PeplinkController` path used. That path is
-        known-working on every Peplink firmware the author has tested
-        against (BR1 Pro 5G, MAX Transit, Balance 20/50/310, MBX).
-        `{id: <wan_index>, enable: <bool>}` is the documented body.
+        Goes through the OAuth-authenticated `/cgi-bin/MANGA/api.cgi`
+        endpoint with the wrapped `{func, agent, action, instantActive,
+        list: [{id, enable}]}` body — the same path the legacy
+        `force_wan_reconnect` already uses successfully for cellular
+        WANs. The `instantActive: True` flag is what actually commits
+        the change on BR1 Pro 5G firmware 8.5.4; the plain
+        `/api/config.wan.connection` endpoint returns `stat: ok` but
+        silently no-ops on cellular WANs regardless of body shape.
         """
-        spec = self.spec
-        # Peplink's /api/config.wan.connection expects the nested shape
-        # `{"<wan_index>": {"enable": <bool>}}`. The flat shape
-        # `{id, enable}` returned HTTP 200 but Peplink silently ignored
-        # the change — echoed back the previous enable state. Cellular
-        # WANs in particular were never flipped.
-        body = {str(int(wan_index)): {"enable": bool(enabled)}}
-
-        # Preferred path: piggyback on the poller's live session.
-        rest = self._rest_poller
-        if rest is not None and rest._session is not None and not rest._session.closed:
-            if not rest._authenticated:
-                await rest._authenticate()
-            session = rest._session
-            resp = await session.post(
-                f"{rest.base_url}/api/config.wan.connection", json=body,
-            )
-            if resp.status == 401:
-                rest._authenticated = False
-                await rest._authenticate()
-                resp = await session.post(
-                    f"{rest.base_url}/api/config.wan.connection", json=body,
-                )
-            resp.raise_for_status()
-            data = await resp.json()
-            # Best-effort apply. Firmwares vary — some auto-apply on the
-            # write, others want an explicit config apply. We mirror
-            # `PeplinkController.apply_config()` which swallows the error
-            # because "apply not required" is benign.
-            try:
-                apply_resp = await session.post(
-                    f"{rest.base_url}/api/cmd.config.apply", json={},
-                )
-                apply_resp.raise_for_status()
-            except Exception:
-                pass
-            return data
-
-        # Fallback: spin a short-lived session. Happens when the REST
-        # poller is present but never successfully authed, or in the
-        # unlikely case set_wan_enabled is called before build_pollers.
-        ctx = ssl.create_default_context()
-        if not spec.verify_ssl:
-            ctx.check_hostname = False
-            ctx.verify_mode = ssl.CERT_NONE
-        timeout = aiohttp.ClientTimeout(total=10)
-        async with aiohttp.ClientSession(
-            cookie_jar=aiohttp.CookieJar(unsafe=True),
-            connector=aiohttp.TCPConnector(ssl=ctx),
-            timeout=timeout,
-        ) as s:
-            base = f"https://{spec.host}"
-            login = await s.post(
-                f"{base}/api/login",
-                json={"username": spec.username, "password": spec.password},
-            )
-            login.raise_for_status()
-            resp = await s.post(f"{base}/api/config.wan.connection", json=body)
-            resp.raise_for_status()
-            data = await resp.json()
-            try:
-                apply_resp = await s.post(f"{base}/api/cmd.config.apply", json={})
-                apply_resp.raise_for_status()
-            except Exception:
-                pass
-            return data
+        controller = self._get_controller()
+        body = {
+            "func": "config.wan.connection",
+            "agent": "webui",
+            "action": "update",
+            "instantActive": True,
+            "list": [{"id": int(wan_index), "enable": bool(enabled)}],
+        }
+        return await controller._manga_api(body)
 
     def _get_controller(self) -> Any:
         """Return a memoized PeplinkController scoped to this device."""

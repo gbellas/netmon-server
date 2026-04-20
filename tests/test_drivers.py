@@ -358,13 +358,15 @@ class TestSetWanEnabled:
         with pytest.raises(NotImplementedError, match="WAN"):
             _asyncio.run(drv.set_wan_enabled(1, True))
 
-    def test_peplink_router_happy_path_via_mocked_session(
+    def test_peplink_router_uses_manga_api_wrapped_body(
         self, state, ws
     ) -> None:
-        """Verify the Peplink driver issues the right POST without
-        touching real hardware. We build the driver, stub its REST
-        poller's authenticated aiohttp session with a fake that records
-        the call, then assert the expected endpoint + body."""
+        """set_wan_enabled must go through the OAuth-authenticated
+        MANGA api.cgi path with the `{func, action, instantActive,
+        list: [{id, enable}]}` body. The plain /api/config.wan.connection
+        endpoint returns stat:ok but silently no-ops on cellular WANs
+        (BR1 Pro 5G / firmware 8.5.4) regardless of body shape — only
+        the MANGA path with instantActive=True actually commits."""
         import asyncio as _asyncio
 
         spec = DeviceSpec.from_config(
@@ -372,54 +374,24 @@ class TestSetWanEnabled:
             {"kind": "peplink_router", "host": "1.2.3.4", "username": "a"},
         )
         drv = PeplinkRouterDriver(spec)
-        pollers = drv.build_pollers(state=state, ws_manager=ws)
-        rest = pollers[0]
 
-        # Fake aiohttp response that mimics the attributes we read.
-        class _FakeResp:
-            def __init__(self, payload: dict, status: int = 200) -> None:
-                self.status = status
-                self._payload = payload
-                self.raised = False
+        captured: list[dict] = []
 
-            def raise_for_status(self) -> None:
-                if self.status >= 400:
-                    self.raised = True
-                    raise RuntimeError(f"http {self.status}")
+        class _StubController:
+            async def _manga_api(self, body: dict) -> dict:
+                captured.append(body)
+                return {"stat": "ok"}
 
-            async def json(self) -> dict:
-                return self._payload
-
-        captured: list[tuple[str, dict]] = []
-
-        class _FakeSession:
-            closed = False
-
-            async def post(self, url: str, json: dict):
-                captured.append((url, json))
-                # Differentiate the apply call vs the wan.connection
-                # write — both return {"stat":"ok"} in practice.
-                return _FakeResp({"stat": "ok"})
-
-        # Pretend the REST poller is already authenticated so
-        # set_wan_enabled takes the session-reuse path.
-        rest._session = _FakeSession()  # type: ignore[assignment]
-        rest._authenticated = True
+        drv._controller = _StubController()
 
         result = _asyncio.run(drv.set_wan_enabled(2, False))
-        # The function returns the wan.connection response as-is.
         assert result == {"stat": "ok"}
-        # Expect two POSTs: the wan.connection write + the config apply.
-        urls = [c[0] for c in captured]
-        bodies = [c[1] for c in captured]
-        assert "https://1.2.3.4/api/config.wan.connection" in urls
-        assert "https://1.2.3.4/api/cmd.config.apply" in urls
-        # The wan.connection call must carry the nested `{<idx>: {enable}}`
-        # body — Peplink ignored the flat `{id, enable}` form for cellular
-        # WANs on at least BR1 firmware 8.5.4.
-        wan_call = next(c for c in captured
-                        if c[0].endswith("config.wan.connection"))
-        assert wan_call[1] == {"2": {"enable": False}}
+        assert len(captured) == 1
+        body = captured[0]
+        assert body["func"] == "config.wan.connection"
+        assert body["action"] == "update"
+        assert body["instantActive"] is True
+        assert body["list"] == [{"id": 2, "enable": False}]
 
 
 # ---- Peplink driver: carrier / RAT / SF control contracts --------------
