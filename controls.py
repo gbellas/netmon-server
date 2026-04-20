@@ -133,9 +133,23 @@ class PeplinkController:
         return await r.json()
 
     async def set_wan_enable(self, wan_id: int, enable: bool) -> dict:
-        """Enable or disable a WAN connection on the Peplink."""
-        body = {"id": wan_id, "enable": bool(enable)}
-        return await self._post("/api/config.wan.connection", body)
+        """Enable or disable a WAN connection on the Peplink.
+
+        Uses the OAuth'd MANGA api.cgi path with instantActive=True —
+        the plain /api/config.wan.connection endpoint returns stat:ok
+        but silently no-ops on cellular (and, as of BR1 Pro 5G firmware
+        8.5.4, also on Wi-Fi WAN) regardless of body shape. Only the
+        MANGA path with the wrapped {func, action, instantActive, list}
+        body actually commits across every WAN kind on this firmware.
+        """
+        body = {
+            "func": "config.wan.connection",
+            "agent": "webui",
+            "action": "update",
+            "instantActive": True,
+            "list": [{"id": int(wan_id), "enable": bool(enable)}],
+        }
+        return await self._manga_api(body)
 
     async def set_wan_priority(self, wan_id: int, priority: int) -> dict:
         """Set a WAN's priority (1 = highest). priority: 0 disables, 1/2/3 = priority tier."""
