@@ -59,6 +59,13 @@ class PeplinkSshPingPoller(BasePoller):
         key_prefix_by_role: dict[str, str] | None = None,
         state_key_root: str | None = None,
         pause_state=None,
+        # Ping-command parameterization. Peplink's CLI exposes
+        # `support ping <host>` with a `>` shell prompt. Linux-based
+        # devices (e.g. UniFi UDM) use standard `ping -i 1 -c N <host>`
+        # against a bash/ash shell prompt (`$` or `#`). The regex
+        # defaults keep Peplink working; UniFi driver overrides both.
+        ping_command_template: str = "support ping {host}",
+        prompt_regex: str = r">",
     ):
         name = poller_name or self._DEFAULT_POLLER_NAME
         super().__init__(name, config, state, ws_manager, bandwidth_meter=bandwidth_meter)
@@ -66,6 +73,8 @@ class PeplinkSshPingPoller(BasePoller):
         # under `<state_key_root>.<host>.*`; otherwise falls through to the
         # poller's `name` (legacy behavior where name doubled as root).
         self._state_key_root = state_key_root
+        self._ping_command_template = ping_command_template
+        self._prompt_regex = prompt_regex
         self.host = config["host"]
         self.port = config.get("port", 22)
         self.username = config.get("username", "admin")
@@ -177,7 +186,7 @@ class PeplinkSshPingPoller(BasePoller):
                     c = pexpect.spawn(cmd, timeout=self.ssh_timeout, encoding="utf-8")
                     c.expect(r"[Pp]assword:", timeout=self.ssh_timeout)
                     c.sendline(self.password)
-                    c.expect(r">", timeout=self.ssh_timeout)
+                    c.expect(self._prompt_regex, timeout=self.ssh_timeout)
                     return c
 
                 child = await loop.run_in_executor(None, _spawn_and_login)
@@ -185,10 +194,10 @@ class PeplinkSshPingPoller(BasePoller):
                 backoff = 1.0
 
                 # Streaming loop: kick off back-to-back ping bursts and parse every line
-                patterns = [PACKET_RE.pattern, SUMMARY_RE.pattern, RTT_RE.pattern, r">", pexpect.TIMEOUT]
+                patterns = [PACKET_RE.pattern, SUMMARY_RE.pattern, RTT_RE.pattern, self._prompt_regex, pexpect.TIMEOUT]
 
                 def _send_ping():
-                    child.sendline(f"support ping {host}")
+                    child.sendline(self._ping_command_template.format(host=host))
 
                 def _expect_next(timeout=8):
                     return child.expect(patterns, timeout=timeout)

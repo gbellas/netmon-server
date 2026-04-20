@@ -79,7 +79,45 @@ class UniFiNetworkDriver:
         poller.name = spec.id
         poller.logger = logging.getLogger(f"netmon.{spec.id}")
         self._poller = poller
-        return [poller]
+        pollers: list[Any] = [poller]
+
+        # Optional SSH ping streamer. UDM and other UniFi OS gateways
+        # expose a Linux shell over SSH — standard `ping -i 1 -c N host`
+        # works directly. This gives per-router high-frequency ping data
+        # that the built-in monitor pings (which run at ~1 Hz max) can't
+        # match. Config mirrors the peplink_router SSH block shape.
+        ssh_cfg = spec.extra.get("ssh") or {}
+        if ssh_cfg.get("enabled"):
+            # Import locally to avoid pulling pexpect into every driver
+            # module's import graph.
+            from ..br1_ssh_ping import PeplinkSshPingPoller
+            ssh = PeplinkSshPingPoller(
+                config={
+                    "host":         spec.host,
+                    "port":         ssh_cfg.get("port", 22),
+                    "username":     ssh_cfg.get("username", "root"),
+                    "password":     ssh_cfg.get("password", spec.password),
+                    "targets":      ssh_cfg.get("targets", []),
+                    "ssh_timeout":  ssh_cfg.get("ssh_timeout", 10),
+                    "poll_interval": ssh_cfg.get("poll_interval", 30),
+                    "count":         ssh_cfg.get("count", 5),
+                },
+                state=state,
+                ws_manager=ws_manager,
+                bandwidth_meter=bandwidth_meter,
+                poller_name=f"{spec.id}_ssh",
+                state_key_root=spec.id,
+                # Linux-style ping: interval 1s, count N. Format string
+                # matches the burst shape the poller's regex expects.
+                ping_command_template="ping -i 1 -c "
+                    + str(ssh_cfg.get("count", 5)) + " {host}",
+                # Bash/ash shell prompt — UniFi OS ships with either,
+                # both end the last line with `# ` or `$ `.
+                prompt_regex=r"[#$]\s*$",
+                pause_state=None,
+            )
+            pollers.append(ssh)
+        return pollers
 
     # ---- WAN enable/disable -------------------------------------------
     #
