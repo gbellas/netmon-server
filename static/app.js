@@ -303,20 +303,49 @@ function updateInternetStatus() {
   }
 }
 
+// Ping device prefixes we scan state for. "ping" is the legacy hardcoded
+// prefix; the others are populated at startup from /api/devices (any
+// device with kind === "icmp_ping" gets its id added here). Without this
+// discovery step the dashboard only rendered the legacy prefix and
+// missed every driver-registered ICMP device.
+let _icmpPingPrefixes = ['ping'];
+async function loadIcmpPingDevices() {
+  try {
+    const r = await authFetch('/api/devices');
+    if (!r.ok) return;
+    const body = await r.json();
+    const kinds = (body.devices || [])
+      .filter(d => (d.kind || '').replace(/^legacy_/, '') === 'icmp_ping')
+      .map(d => d.id);
+    _icmpPingPrefixes = Array.from(new Set(['ping', ...kinds]));
+  } catch {}
+}
+loadIcmpPingDevices();
+
 // --- Ping Target Cards ---
 function buildPingTargets() {
   const grid = document.getElementById('ping-grid');
   const br1Grid = document.getElementById('br1-internet-grid');
   if (!grid) return;
 
-  // Find all home ping targets currently in state (skip hidden ones)
-  const targets = [];
+  // Find all home ping targets currently in state (skip hidden ones).
+  // Scan every ICMP-device prefix we know about — legacy `ping.*` plus
+  // whatever came back from /api/devices. `targets` now carries the
+  // full prefix so downstream code can reconstruct the state keys.
+  const targets = [];  // { prefix, tkey, card_id }
+  const seen = new Set();
   for (const key of Object.keys(state)) {
-    const m = key.match(/^ping\.(.+)\.name$/);
-    if (!m) continue;
-    const tkey = m[1];
-    if (state[`ping.${tkey}.hidden`]) continue;
-    targets.push(tkey);
+    for (const prefix of _icmpPingPrefixes) {
+      const re = new RegExp(`^${prefix.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')}\\.(.+)\\.name$`);
+      const m = key.match(re);
+      if (!m) continue;
+      const tkey = m[1];
+      if (state[`${prefix}.${tkey}.hidden`]) continue;
+      const id = `${prefix}-${tkey}`;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      targets.push({ prefix, tkey, id });
+    }
   }
 
   // Find all BR1->internet targets
@@ -326,16 +355,17 @@ function buildPingTargets() {
     if (m) br1Targets.push(m[1]);
   }
 
-  // Remove stale ping cards that no longer match (e.g., became hidden)
-  const validHomeIds = new Set(targets.map(t => `ping-${t}`));
+  // Remove stale ping cards that no longer match (e.g., became hidden
+  // or the originating device got removed from /api/devices).
+  const validHomeIds = new Set(targets.map(t => `ping-${t.id}`));
   for (const card of grid.querySelectorAll('.ping-card')) {
     if (!validHomeIds.has(card.id)) card.remove();
   }
 
   // Ensure every home target has a corresponding card; add missing ones
   let homeAddedAny = false;
-  for (const tkey of targets) {
-    if (document.getElementById(`ping-${tkey}`)) continue;
+  for (const t of targets) {
+    if (document.getElementById(`ping-${t.id}`)) continue;
     homeAddedAny = true;
   }
   let br1AddedAny = false;
@@ -346,20 +376,22 @@ function buildPingTargets() {
   if (!homeAddedAny && !br1AddedAny) return;
   if (targets.length === 0 && br1Targets.length === 0) return;
 
-  for (const tkey of targets) {
-    if (document.getElementById(`ping-${tkey}`)) continue;
+  for (const t of targets) {
+    if (document.getElementById(`ping-${t.id}`)) continue;
+    const p = t.prefix;
+    const k = t.tkey;
     const card = document.createElement('div');
     card.className = 'ping-card';
-    card.id = `ping-${tkey}`;
+    card.id = `ping-${t.id}`;
     card.innerHTML = `
-      <div class="ping-name" data-text="ping.${tkey}.name">${state[`ping.${tkey}.name`] || tkey}</div>
-      <div class="ping-host" data-text="ping.${tkey}.host">${state[`ping.${tkey}.host`] || ''}</div>
-      <div class="ping-latency" data-text="ping.${tkey}.latency_ms" data-format="ms" id="ping-lat-${tkey}">--</div>
+      <div class="ping-name" data-text="${p}.${k}.name">${state[`${p}.${k}.name`] || k}</div>
+      <div class="ping-host" data-text="${p}.${k}.host">${state[`${p}.${k}.host`] || ''}</div>
+      <div class="ping-latency" data-text="${p}.${k}.latency_ms" data-format="ms" id="ping-lat-${t.id}">--</div>
       <div class="ping-stats">
-        Jitter: <span data-text="ping.${tkey}.jitter_ms" data-format="ms">--</span> |
-        Loss: <span data-text="ping.${tkey}.packet_loss_pct" data-format="pct">--</span>
+        Jitter: <span data-text="${p}.${k}.jitter_ms" data-format="ms">--</span> |
+        Loss: <span data-text="${p}.${k}.packet_loss_pct" data-format="pct">--</span>
       </div>
-      <canvas data-sparkline="ping.${tkey}.latency_ms" width="160" height="36"></canvas>
+      <canvas data-sparkline="${p}.${k}.latency_ms" width="160" height="36"></canvas>
     `;
     grid.appendChild(card);
   }
