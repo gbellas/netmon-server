@@ -206,6 +206,20 @@ class PeplinkRouterDriver:
             self._controller = _make_controller(self.spec)
         return self._controller
 
+    async def get_wan_priority(self, wan_index: int) -> int:
+        """Snapshot the WAN's current priority (1=highest, 3=standby).
+        Used by the drain-and-run helper to restore it after the
+        disruptive action completes."""
+        ctrl = self._get_controller()
+        return await ctrl.get_wan_priority(int(wan_index))
+
+    async def set_wan_priority(self, wan_index: int, priority: int) -> dict:
+        """Set the WAN's priority tier. 1 = primary, 2 = failover,
+        3 = standby. The drain helper uses this to demote a WAN so
+        existing flows naturally re-route before we disrupt it."""
+        ctrl = self._get_controller()
+        return await ctrl.set_wan_priority(int(wan_index), int(priority))
+
     async def set_carrier(self, carrier: str) -> dict:
         """Switch RoamLink eSIM carrier and force an immediate re-register.
         Accepts "verizon" / "att" / "tmobile" / "auto"."""

@@ -151,10 +151,46 @@ class PeplinkController:
         }
         return await self._manga_api(body)
 
+    async def get_wan_priority(self, wan_id: int) -> int:
+        """Read a WAN's current priority. Defaults to 1 on parse errors.
+
+        GETs against `/api/config.wan.connection` work fine — only the
+        write path is broken on cellular WANs (see set_wan_priority /
+        set_wan_enable notes). This is called by the drain helper to
+        snapshot priority so it can be restored post-action.
+        """
+        await self._ensure_auth()
+        s = await self._get_session()
+        r = await s.get(f"{self.base_url}/api/config.wan.connection")
+        if r.status == 401:
+            self._authed = False
+            await self._ensure_auth()
+            r = await s.get(f"{self.base_url}/api/config.wan.connection")
+        r.raise_for_status()
+        d = await r.json()
+        resp = d.get("response", {}) or {}
+        wan_conf = resp.get(str(int(wan_id)), {}) or {}
+        conn = wan_conf.get("connection", {}) or {}
+        try:
+            return int(conn.get("priority", 1))
+        except (TypeError, ValueError):
+            return 1
+
     async def set_wan_priority(self, wan_id: int, priority: int) -> dict:
-        """Set a WAN's priority (1 = highest). priority: 0 disables, 1/2/3 = priority tier."""
-        body = {"id": wan_id, "connection": {"priority": int(priority)}}
-        return await self._post("/api/config.wan.connection", body)
+        """Set a WAN's priority (1 = highest). priority: 0 disables, 1/2/3 = priority tier.
+
+        Uses the MANGA api.cgi path with instantActive=True for the same
+        reason set_wan_enable does — BR1 Pro 5G firmware 8.5.4 silently
+        no-ops `/api/config.wan.connection` writes on cellular WANs.
+        """
+        body = {
+            "func": "config.wan.connection",
+            "agent": "webui",
+            "action": "update",
+            "instantActive": True,
+            "list": [{"id": int(wan_id), "connection": {"priority": int(priority)}}],
+        }
+        return await self._manga_api(body)
 
     async def apply_config(self) -> dict:
         """Commit queued config changes. Some Peplink firmwares auto-apply; others need this."""

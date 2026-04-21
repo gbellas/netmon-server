@@ -309,15 +309,30 @@ function updateInternetStatus() {
 // discovery step the dashboard only rendered the legacy prefix and
 // missed every driver-registered ICMP device.
 let _icmpPingPrefixes = ['ping'];
+// Router devices (Peplink + UniFi kinds) — these publish SSH-streamer
+// ping state under `<deviceId>.<host_underscored>.{latency_ms,loss_pct,
+// name,host,status,source}`. We render them in the Router Ping
+// Monitors section so the user sees packet loss from each router's
+// vantage point (lower latency + higher fidelity than polled metrics).
+let _routerDevices = [];  // [{id, displayName}]
 async function loadIcmpPingDevices() {
   try {
     const r = await authFetch('/api/devices');
     if (!r.ok) return;
     const body = await r.json();
-    const kinds = (body.devices || [])
-      .filter(d => (d.kind || '').replace(/^legacy_/, '') === 'icmp_ping')
-      .map(d => d.id);
-    _icmpPingPrefixes = Array.from(new Set(['ping', ...kinds]));
+    const devs = body.devices || [];
+    _icmpPingPrefixes = Array.from(new Set([
+      'ping',
+      ...devs
+        .filter(d => (d.kind || '').replace(/^legacy_/, '') === 'icmp_ping')
+        .map(d => d.id),
+    ]));
+    _routerDevices = devs
+      .filter(d => {
+        const k = (d.kind || '').replace(/^legacy_/, '');
+        return k === 'peplink_router' || k === 'unifi_network';
+      })
+      .map(d => ({ id: d.id, displayName: d.display_name || d.id }));
   } catch {}
 }
 loadIcmpPingDevices();
@@ -416,11 +431,116 @@ function buildPingTargets() {
     }
   }
 
+  buildRouterPingTargets();
+
   // Clear cache so new elements are found
   Object.keys(elCache).forEach(k => delete elCache[k]);
 
   // Re-apply current state to new elements
   updateDOM(state);
+}
+
+// Keys the router publishes under its own id that are NOT ping targets
+// — these segments appear as `<deviceId>.<segment>.*` but don't mean a
+// ping target. Exclude them from the router-ping discovery scan.
+const _ROUTER_NON_PING_SEGMENTS = new Set([
+  'wan1', 'wan2', 'wan3', 'wan4', 'wan5', 'wan6',
+  'internet', 'status', 'model', 'version', 'uptime',
+  'cpu', 'mem', 'clients', 'active_wan_ip', 'active_isp_name',
+  'active_isp_org', 'active_asn', 'wlan_clients', 'lan_clients',
+]);
+
+function buildRouterPingTargets() {
+  const card = document.getElementById('router-pings-card');
+  const body = document.getElementById('router-pings-body');
+  if (!card || !body) return;
+
+  // For each router device, scan state for `<id>.<segment>.host` keys
+  // (the host field is unique to ping targets — WANs don't publish it).
+  // Group by device, render a subsection per device.
+  const byDevice = new Map();  // id -> [{tkey, host, name}]
+  for (const dev of _routerDevices) {
+    const prefix = dev.id;
+    // Escape prefix for regex; only letters/digits/_/- expected but be safe.
+    const escPrefix = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(`^${escPrefix}\\.([^.]+)\\.host$`);
+    const targets = [];
+    for (const key of Object.keys(state)) {
+      const m = key.match(re);
+      if (!m) continue;
+      const seg = m[1];
+      if (_ROUTER_NON_PING_SEGMENTS.has(seg)) continue;
+      // Skip WAN-flavored monitor keys like `udm.wan1.mon.1_1_1_1.*`
+      // (different shape, handled by UDM Internet Monitors section).
+      if (seg.startsWith('wan')) continue;
+      targets.push({
+        tkey: seg,
+        host: state[key] || seg,
+        name: state[`${prefix}.${seg}.name`] || state[key] || seg,
+      });
+    }
+    if (targets.length) byDevice.set(dev, targets);
+  }
+
+  if (byDevice.size === 0) {
+    card.hidden = true;
+    body.innerHTML = '';
+    return;
+  }
+  card.hidden = false;
+
+  // Rebuild from scratch — the set of routers + targets is small and
+  // rarely changes, and incremental DOM patching here isn't worth the
+  // complexity when updateDOM() handles per-value updates anyway.
+  const existingIds = new Set(
+    Array.from(body.querySelectorAll('[data-ping-card-id]'))
+      .map(el => el.getAttribute('data-ping-card-id'))
+  );
+  const neededIds = new Set();
+  for (const [dev, targets] of byDevice) {
+    const sectionId = `router-ping-section-${dev.id}`;
+    let section = document.getElementById(sectionId);
+    if (!section) {
+      section = document.createElement('div');
+      section.id = sectionId;
+      section.className = 'router-ping-section';
+      section.innerHTML = `
+        <div class="router-ping-header">
+          <span class="router-ping-title">${dev.displayName}</span>
+          <span class="text-muted" style="font-size:0.7rem; margin-left:8px">${dev.id}</span>
+        </div>
+        <div class="card-body ping-grid" id="router-ping-grid-${dev.id}"></div>
+      `;
+      body.appendChild(section);
+    }
+    const grid = section.querySelector('.ping-grid');
+    for (const t of targets) {
+      const cardId = `rping-${dev.id}-${t.tkey}`;
+      neededIds.add(cardId);
+      if (document.getElementById(cardId)) continue;
+      const c = document.createElement('div');
+      c.className = 'ping-card';
+      c.id = cardId;
+      c.setAttribute('data-ping-card-id', cardId);
+      c.innerHTML = `
+        <div class="ping-name" data-text="${dev.id}.${t.tkey}.name">${t.name}</div>
+        <div class="ping-host" data-text="${dev.id}.${t.tkey}.host">${t.host}</div>
+        <div class="ping-latency" data-text="${dev.id}.${t.tkey}.latency_ms" data-format="ms">--</div>
+        <div class="ping-stats">
+          Loss: <span data-text="${dev.id}.${t.tkey}.loss_pct" data-format="pct">--</span>
+        </div>
+        <canvas data-sparkline="${dev.id}.${t.tkey}.latency_ms" width="160" height="36"></canvas>
+      `;
+      grid.appendChild(c);
+    }
+  }
+  // Remove cards for targets that no longer publish state.
+  for (const id of existingIds) {
+    if (!neededIds.has(id)) {
+      const el = document.getElementById(id);
+      if (el) el.remove();
+    }
+  }
 }
 
 // --- Sparklines ---
@@ -1152,10 +1272,31 @@ setInterval(() => {
 }, 15000);
 
 // --- WAN Control Buttons ---
+const DRAIN_WAIT_SECONDS = 15;
+
 async function wanControl(device, wanId, kind, body, btn) {
+  // Graceful-disable path: the Disable button fires drain-and-disable
+  // instead of the immediate-disable endpoint. The user sees a 15s
+  // countdown + cancel button while the router demotes this WAN's
+  // priority so in-flight flows migrate before the interface drops.
+  // Enable / Prefer / Standby stay on their synchronous endpoints —
+  // they either add capacity or change routing without the disruption.
+  if (kind === 'disable') {
+    if (!confirm(
+      `Disable ${device.toUpperCase()} WAN${wanId}?\n\n` +
+      `Priority will be demoted to Standby first, then the WAN will ` +
+      `be disabled after ${DRAIN_WAIT_SECONDS}s. You can cancel mid-countdown.`
+    )) return;
+    await startGracefulDrain({
+      device, wanId,
+      url: `/api/devices/${device}/wan/${wanId}/drain-and-disable?wait=${DRAIN_WAIT_SECONDS}`,
+      btn,
+    });
+    return;
+  }
+
   const confirmMsg = {
     enable: `Enable ${device.toUpperCase()} WAN${wanId}?`,
-    disable: `Disable ${device.toUpperCase()} WAN${wanId}? Traffic on this link will stop.`,
     prefer: `Make ${device.toUpperCase()} WAN${wanId} the preferred (priority 1) WAN?`,
     standby: `Move ${device.toUpperCase()} WAN${wanId} to priority 2 (standby)?`,
   }[kind] || 'Apply change?';
@@ -1164,7 +1305,7 @@ async function wanControl(device, wanId, kind, body, btn) {
   btn.classList.add('working');
   btn.disabled = true;
   try {
-    const url = `/api/control/${device}/wan/${wanId}/${kind === 'disable' || kind === 'enable' ? 'enable' : 'priority'}`;
+    const url = `/api/control/${device}/wan/${wanId}/${kind === 'enable' ? 'enable' : 'priority'}`;
     const r = await authFetch(url, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
@@ -1181,6 +1322,84 @@ async function wanControl(device, wanId, kind, body, btn) {
     btn.classList.remove('working');
     btn.disabled = false;
     alert('Control failed: ' + e.message);
+  }
+}
+
+// Kick off a graceful drain + disable. Returns immediately; the server
+// publishes drain state via the WS stream, which our state updater
+// picks up to render the countdown inside the Disable button.
+async function startGracefulDrain({ device, wanId, url, btn }) {
+  btn.classList.add('working');
+  btn.disabled = true;
+  try {
+    const r = await authFetch(url, { method: 'POST' });
+    if (!r.ok) throw new Error(await r.text());
+  } catch (e) {
+    btn.classList.remove('working');
+    btn.disabled = false;
+    alert('Graceful disable failed: ' + e.message);
+  }
+}
+
+// Called once per updateDOM cycle to paint any active drains on the
+// matching Disable buttons. A "draining" state key makes the button
+// flip to "Cancel (12s)"; a second click posts the cancel endpoint.
+function renderDrainCountdowns() {
+  const now = Date.now() / 1000;
+  const drainingKeys = Object.keys(state).filter(
+    k => k.endsWith('.drain_status') && state[k] === 'draining'
+  );
+  // Reset any Disable buttons whose WAN is no longer draining.
+  for (const btn of document.querySelectorAll('.btn-disable[data-drain-active="1"]')) {
+    const expectedKey = btn.getAttribute('data-drain-key');
+    if (!drainingKeys.includes(expectedKey)) {
+      btn.textContent = 'Disable';
+      btn.classList.remove('working', 'btn-cancel');
+      btn.disabled = false;
+      btn.removeAttribute('data-drain-active');
+      btn.onclick = btn._origOnClick;
+      btn._origOnClick = null;
+    }
+  }
+  // Paint any newly-draining WANs.
+  for (const key of drainingKeys) {
+    const m = key.match(/^(.+)\.wan(\d+)\.drain_status$/);
+    if (!m) continue;
+    const [_, device, wan] = m;
+    const wanId = parseInt(wan, 10);
+    const endsAt = state[`${device}.wan${wanId}.drain_ends_at`] || 0;
+    const remaining = Math.max(0, Math.ceil(endsAt - now));
+    // Find the matching row's Disable button.
+    const row = document.querySelector(
+      `[data-ctrl-device="${device}"][data-ctrl-wan-id="${wanId}"]`
+    );
+    if (!row) continue;
+    const btn = row.querySelector('.btn-disable');
+    if (!btn) continue;
+    if (btn.getAttribute('data-drain-active') !== '1') {
+      btn._origOnClick = btn.onclick;
+      btn.setAttribute('data-drain-active', '1');
+      btn.setAttribute('data-drain-key', key);
+      btn.classList.add('btn-cancel');
+      btn.classList.remove('working');
+      btn.disabled = false;
+      btn.onclick = async () => {
+        btn.disabled = true;
+        try {
+          const r = await authFetch(
+            `/api/devices/${device}/wan/${wanId}/drain`,
+            { method: 'DELETE' }
+          );
+          if (!r.ok && r.status !== 404) {
+            throw new Error(await r.text());
+          }
+        } catch (e) {
+          alert('Cancel failed: ' + e.message);
+          btn.disabled = false;
+        }
+      };
+    }
+    btn.textContent = `Cancel (${remaining}s)`;
   }
 }
 

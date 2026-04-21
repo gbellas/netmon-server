@@ -125,6 +125,14 @@ class UdmController:
         """Set failover priority on a UDM WAN. priority=1 primary, 2=failover, etc."""
         return await self._put_wan(wan_id, {"wan_failover_priority": int(priority)})
 
+    async def get_wan_priority(self, wan_id: int) -> int:
+        """Read a WAN's current failover priority. Defaults to 1."""
+        nc = await self._find_wan_conf(wan_id)
+        try:
+            return int(nc.get("wan_failover_priority", 1))
+        except (TypeError, ValueError):
+            return 1
+
     # UniFi Network 10.2 has a non-disruptive per-WAN speedtest at
     #   POST /proxy/network/api/s/default/cmd/devmgr/speedtest
     #   body: {"interface_name": "<ethN>", "cmd": "speedtest"}

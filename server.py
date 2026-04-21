@@ -3,8 +3,9 @@
 import asyncio
 import logging
 import os
+import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import yaml
 
@@ -995,6 +996,255 @@ async def device_wan_disable(dev_id: str, wan_index: int):
     """Disable a WAN interface on the given device via its driver.
     Returns 501 if the device's driver doesn't support WAN toggling."""
     return await _driver_wan_toggle(dev_id, wan_index, False)
+
+
+# ---- Graceful drain-then-run helpers --------------------------------------
+#
+# Any disruptive WAN action (disable, carrier switch, RAT lock) risks
+# dropping live flows that happen to be pinned to the affected interface.
+# `drain_and_run` demotes the WAN to standby priority first, publishes a
+# countdown so the UI can show it, waits N seconds for new flows to route
+# off the interface, runs the disruptive action, and then restores the
+# previous priority so the next re-enable has its original tier. If the
+# user cancels mid-countdown, the disruptive action is skipped but the
+# priority is still restored so the WAN is never left demoted.
+
+# Active drains keyed by (dev_id, wan_index) → asyncio.Task. Used so a
+# second drain request on the same WAN either returns "already draining"
+# or can cancel the prior one.
+_active_drains: dict[tuple[str, int], asyncio.Task] = {}
+
+# Lowest priority tier we demote to during drain. Peplink standard is
+# 3 (Standby on BR1 / MAX family); UDM-style failover_priority treats
+# higher numbers as lower-priority too. A single constant keeps the
+# driver protocol simple at the cost of some vendor idiom leakage —
+# revisit if we add a driver that numbers priorities the other way.
+DRAIN_PRIORITY = 3
+
+
+async def _drain_and_run(
+    dev_id: str,
+    wan_index: int,
+    driver: Any,
+    wait_seconds: float,
+    action: Callable[[], Any],
+    action_label: str,
+) -> None:
+    """Run the drain flow: demote → wait → action → restore.
+
+    `action` is an async callable with no args that performs the
+    disruptive operation (e.g., `driver.set_wan_enabled(n, False)`).
+    State keys `<dev_id>.wan<n>.drain_*` are published so the UI can
+    render a countdown. Exceptions from the action are logged and
+    broadcast as `drain_error`; priority restore runs regardless.
+    """
+    key = (dev_id, int(wan_index))
+    wan_key_prefix = f"{dev_id}.wan{int(wan_index)}"
+    # 1. Snapshot current priority so we can restore it later.
+    prev_priority = 1
+    try:
+        if hasattr(driver, "get_wan_priority"):
+            prev_priority = await driver.get_wan_priority(int(wan_index))
+    except Exception as e:
+        logger.warning(
+            f"drain: failed to read prior priority on {dev_id} wan{wan_index}: {e}"
+        )
+
+    drain_ends_at = time.time() + float(wait_seconds)
+    try:
+        # 2. Demote. If the driver doesn't support priority control, skip
+        #    demote and go straight to the action — the user still gets
+        #    the countdown; they just don't get the bleed-off benefit.
+        try:
+            if hasattr(driver, "set_wan_priority"):
+                await driver.set_wan_priority(int(wan_index), DRAIN_PRIORITY)
+        except Exception as e:
+            logger.warning(
+                f"drain: demote failed on {dev_id} wan{wan_index}: {e}"
+            )
+
+        # 3. Publish drain state for the UI countdown.
+        updates = {
+            f"{wan_key_prefix}.drain_status":   "draining",
+            f"{wan_key_prefix}.drain_label":    action_label,
+            f"{wan_key_prefix}.drain_ends_at":  drain_ends_at,
+            f"{wan_key_prefix}.drain_prev_priority": int(prev_priority),
+        }
+        state.update(updates)
+        await ws_manager.broadcast(updates)
+
+        # 4. Wait (cancellable).
+        await asyncio.sleep(float(wait_seconds))
+
+        # 5. Run the disruptive action.
+        state.update({f"{wan_key_prefix}.drain_status": "running"})
+        await ws_manager.broadcast({f"{wan_key_prefix}.drain_status": "running"})
+        try:
+            await action()
+        except Exception as e:
+            logger.error(
+                f"drain: action {action_label!r} failed on {dev_id} "
+                f"wan{wan_index}: {e}"
+            )
+            err_updates = {
+                f"{wan_key_prefix}.drain_status": "error",
+                f"{wan_key_prefix}.drain_error":  str(e)[:300],
+            }
+            state.update(err_updates)
+            await ws_manager.broadcast(err_updates)
+            # Still fall through to restore priority — better to leave
+            # the router cleanly configured than in a demoted-forever
+            # state just because one HTTP call failed.
+
+    except asyncio.CancelledError:
+        # Client called DELETE — skip the action, restore priority.
+        state.update({f"{wan_key_prefix}.drain_status": "canceling"})
+        await ws_manager.broadcast({f"{wan_key_prefix}.drain_status": "canceling"})
+
+    finally:
+        # 6. Always restore the prior priority, even on error or cancel.
+        #    Best-effort: if this also fails, log + broadcast but don't
+        #    raise (the task is already winding down).
+        try:
+            if hasattr(driver, "set_wan_priority"):
+                await driver.set_wan_priority(int(wan_index), int(prev_priority))
+        except Exception as e:
+            logger.warning(
+                f"drain: priority restore failed on {dev_id} "
+                f"wan{wan_index}: {e}"
+            )
+
+        # 7. Clear drain state keys so the UI returns to normal.
+        clear = {
+            f"{wan_key_prefix}.drain_status":        "",
+            f"{wan_key_prefix}.drain_label":         "",
+            f"{wan_key_prefix}.drain_ends_at":       0,
+            f"{wan_key_prefix}.drain_prev_priority": 0,
+            f"{wan_key_prefix}.drain_error":         "",
+        }
+        state.update(clear)
+        await ws_manager.broadcast(clear)
+        _active_drains.pop(key, None)
+
+
+def _start_drain(
+    dev_id: str,
+    wan_index: int,
+    driver: Any,
+    wait_seconds: float,
+    action: Callable[[], Any],
+    action_label: str,
+) -> dict:
+    """Kick off a drain in the background; error if one is already in
+    flight for the same (device, wan) pair."""
+    key = (dev_id, int(wan_index))
+    existing = _active_drains.get(key)
+    if existing and not existing.done():
+        raise HTTPException(
+            409,
+            f"drain already in progress for {dev_id} wan{wan_index}; "
+            f"DELETE /api/devices/{dev_id}/wan/{wan_index}/drain to cancel",
+        )
+    task = asyncio.create_task(
+        _drain_and_run(
+            dev_id, int(wan_index), driver,
+            float(wait_seconds), action, action_label,
+        )
+    )
+    _active_drains[key] = task
+    return {
+        "ok": True,
+        "wan_index": int(wan_index),
+        "wait_seconds": float(wait_seconds),
+        "action": action_label,
+    }
+
+
+@app.post("/api/devices/{dev_id}/wan/{wan_index}/drain-and-disable")
+async def device_wan_drain_and_disable(
+    dev_id: str, wan_index: int, wait: float = 15.0,
+):
+    """Demote the WAN's priority, wait `wait` seconds, then disable it.
+    Returns immediately with 202-style status; subscribe to the state
+    stream for `<dev_id>.wan<n>.drain_*` keys to render the countdown."""
+    driver = _device_drivers.get(dev_id)
+    if driver is None:
+        raise HTTPException(404, f"no running driver for device {dev_id!r}")
+    if not hasattr(driver, "set_wan_enabled"):
+        raise HTTPException(501, "driver does not support WAN toggling")
+
+    async def _do_disable() -> None:
+        await driver.set_wan_enabled(int(wan_index), False)
+
+    return _start_drain(
+        dev_id, int(wan_index), driver,
+        float(wait), _do_disable, "disable",
+    )
+
+
+@app.delete("/api/devices/{dev_id}/wan/{wan_index}/drain")
+async def device_wan_drain_cancel(dev_id: str, wan_index: int):
+    """Cancel an in-flight drain. Skips the disruptive action but still
+    restores the WAN's original priority."""
+    key = (dev_id, int(wan_index))
+    task = _active_drains.get(key)
+    if task is None or task.done():
+        raise HTTPException(404, f"no drain in progress for {dev_id} wan{wan_index}")
+    task.cancel()
+    return {"ok": True, "canceled": True}
+
+
+class _DrainCarrierBody(BaseModel):
+    carrier: str    # verizon / att / tmobile / auto
+    wait: float = 15.0
+
+
+@app.post("/api/devices/{dev_id}/wan/{wan_index}/drain-and-set-carrier")
+async def device_wan_drain_and_set_carrier(
+    dev_id: str, wan_index: int, body: _DrainCarrierBody,
+):
+    """Graceful carrier switch: demote priority, wait, then change the
+    cellular carrier (the underlying RoamLink re-register drops active
+    flows on this WAN, so draining first lets them migrate)."""
+    driver = _device_drivers.get(dev_id)
+    if driver is None:
+        raise HTTPException(404, f"no running driver for device {dev_id!r}")
+    if not hasattr(driver, "set_carrier"):
+        raise HTTPException(501, "driver does not support carrier switching")
+
+    async def _do_carrier() -> None:
+        await driver.set_carrier(body.carrier)
+
+    return _start_drain(
+        dev_id, int(wan_index), driver,
+        float(body.wait), _do_carrier, f"carrier:{body.carrier}",
+    )
+
+
+class _DrainRatBody(BaseModel):
+    rat: str        # auto / LTE / LTE+3G / 3G / ...
+    wait: float = 15.0
+
+
+@app.post("/api/devices/{dev_id}/wan/{wan_index}/drain-and-set-rat")
+async def device_wan_drain_and_set_rat(
+    dev_id: str, wan_index: int, body: _DrainRatBody,
+):
+    """Graceful RAT (radio mode) switch: demote priority, wait, then
+    lock the radio to the requested mode."""
+    driver = _device_drivers.get(dev_id)
+    if driver is None:
+        raise HTTPException(404, f"no running driver for device {dev_id!r}")
+    if not hasattr(driver, "set_rat"):
+        raise HTTPException(501, "driver does not support RAT switching")
+
+    async def _do_rat() -> None:
+        await driver.set_rat(body.rat)
+
+    return _start_drain(
+        dev_id, int(wan_index), driver,
+        float(body.wait), _do_rat, f"rat:{body.rat}",
+    )
 
 
 # RoamLink carrier PLMN codes (the three carriers Peplink's RoamLink has SIMs for)

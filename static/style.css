@@ -527,6 +527,22 @@ body.edit-mode #edit-toggle { background: var(--green-dim); color: var(--green);
   margin-bottom: 6px;
 }
 
+/* === Router Ping Sections === */
+.router-ping-section { margin-bottom: 14px; }
+.router-ping-section:last-child { margin-bottom: 0; }
+.router-ping-header {
+  display: flex;
+  align-items: baseline;
+  padding: 6px 2px 8px 2px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  margin-bottom: 8px;
+}
+.router-ping-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
 /* === Ping Grid === */
 .ping-grid {
   display: grid;

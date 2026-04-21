@@ -392,8 +392,23 @@
         </div>
       </div>
     </section>
+
+    <!-- Per-router SSH ping monitors — one sub-card per router that
+         publishes `<deviceId>.<host>.latency_ms` keys. Populated at
+         runtime from /api/devices + state scan. -->
+    <section class="row" id="router-pings-section" data-row-id="router-pings">
+      <div class="card card-wide" id="router-pings-card" hidden>
+        <div class="card-header">
+          <span class="card-title">Router Ping Monitors</span>
+          <span class="text-muted" style="font-size:0.7rem; margin-left:8px">measured from each router via SSH</span>
+        </div>
+        <div class="card-body" id="router-pings-body">
+          <!-- Dynamically populated by JS: one subsection per router. -->
+        </div>
+      </div>
+    </section>
   </main>
 
-  <script src="/static/app.js?v=28"></script>
+  <script src="/static/app.js?v=29"></script>
 </body>
 </html>
