@@ -29,7 +29,72 @@ const APP_VERSION = 'v10';
 })();
 
 // --- Configuration ---
-const WS_URL = `ws://${location.host}/ws`;
+// Auth: the server gates every /api/* request and the /ws upgrade behind
+// NETMON_API_TOKEN. We prompt for the token on first load, cache it in
+// localStorage, and attach it to every fetch + the websocket URL. The
+// browser UI was previously reaching these endpoints without auth,
+// which is why the dashboard hung on "Connecting…" after the auth
+// hardening rolled out.
+const TOKEN_KEY = 'netmon_api_token';
+function getToken() {
+  try { return localStorage.getItem(TOKEN_KEY) || ''; } catch { return ''; }
+}
+function setToken(tok) {
+  try {
+    if (tok) localStorage.setItem(TOKEN_KEY, tok);
+    else localStorage.removeItem(TOKEN_KEY);
+  } catch {}
+}
+function promptForToken(message) {
+  // Use the URL fragment once if present (lets the Mac Server app
+  // deep-link with #token=… so the user doesn't have to copy-paste).
+  const hash = new URLSearchParams(location.hash.replace(/^#/, ''));
+  const hashTok = hash.get('token');
+  if (hashTok) {
+    setToken(hashTok);
+    // Scrub it from the URL so it doesn't get saved to history / shared.
+    // Use window.history explicitly — a later `let history = {}` shadows
+    // the global in this file, and TDZ means the bare `history` here
+    // throws "cannot access before initialization".
+    window.history.replaceState(null, '', location.pathname + location.search);
+    return hashTok;
+  }
+  const existing = getToken();
+  const prompt = message || 'Paste your NetMon API token (NETMON_API_TOKEN from the server .env):';
+  const tok = window.prompt(prompt, existing);
+  if (tok !== null && tok.trim()) {
+    setToken(tok.trim());
+    return tok.trim();
+  }
+  return existing;
+}
+
+// Build the WebSocket URL with the stored token as `?token=` since
+// browsers can't set a custom Authorization header on a WebSocket.
+function wsURL() {
+  const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
+  const tok = getToken();
+  const q = tok ? `?token=${encodeURIComponent(tok)}` : '';
+  return `${scheme}://${location.host}/ws${q}`;
+}
+
+// Wrapper around fetch() that adds Authorization: Bearer on every call.
+// Pass-through for everything else, including response handling.
+async function authFetch(input, init = {}) {
+  const tok = getToken();
+  const headers = new Headers(init.headers || {});
+  if (tok) headers.set('Authorization', `Bearer ${tok}`);
+  return fetch(input, { ...init, headers });
+}
+
+// Seed the token on startup — either from URL fragment, localStorage,
+// or an interactive prompt if neither.
+(function ensureToken() {
+  const hash = new URLSearchParams(location.hash.replace(/^#/, ''));
+  if (hash.get('token')) { promptForToken(); return; }
+  if (!getToken()) { promptForToken(); }
+})();
+
 const RECONNECT_BASE = 1000;
 const RECONNECT_MAX = 30000;
 const SPARKLINE_POINTS = 120;
@@ -478,7 +543,7 @@ function updateSfToggle() {
       const origText = btn.textContent;
       btn.textContent = isOn ? 'disabling…' : 'enabling…';
       try {
-        const r = await fetch('/api/control/br1/sf/enable', {
+        const r = await authFetch('/api/control/br1/sf/enable', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({enable: !isOn, profile_id: state['br1.sf.profile_id'] || 1}),
@@ -833,7 +898,7 @@ async function switchCarrier(carrier, btn) {
   btn.classList.add('working');
   document.querySelectorAll('.carrier-btn').forEach(b => { b.disabled = true; });
   try {
-    const r = await fetch('/api/control/br1/carrier', {
+    const r = await authFetch('/api/control/br1/carrier', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({carrier}),
@@ -884,7 +949,7 @@ async function switchRat(mode, btn) {
     b.disabled = true;
   });
   try {
-    const r = await fetch('/api/control/br1/rat', {
+    const r = await authFetch('/api/control/br1/rat', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({mode}),
@@ -970,7 +1035,7 @@ function connect() {
     try { ws.onclose = null; ws.onerror = null; ws.close(); } catch {}
   }
 
-  ws = new WebSocket(WS_URL);
+  ws = new WebSocket(wsURL());
 
   ws.onopen = () => {
     connecting = false;
@@ -1009,8 +1074,18 @@ function connect() {
     }
   };
 
-  ws.onclose = () => {
+  ws.onclose = (ev) => {
     connecting = false;
+    // Code 1008 is what the server sends on token mismatch. Re-prompt
+    // rather than backing off forever into "reconnecting…" hell.
+    if (ev && ev.code === 1008) {
+      setStatus('auth failed', 'badge-connecting');
+      setToken('');
+      promptForToken('Token was rejected by the server. Paste a valid NETMON_API_TOKEN:');
+      reconnectDelay = RECONNECT_BASE;
+      scheduleReconnect();
+      return;
+    }
     setStatus('reconnecting', 'badge-connecting');
     scheduleReconnect();
   };
@@ -1058,7 +1133,7 @@ async function wanControl(device, wanId, kind, body, btn) {
   btn.disabled = true;
   try {
     const url = `/api/control/${device}/wan/${wanId}/${kind === 'disable' || kind === 'enable' ? 'enable' : 'priority'}`;
-    const r = await fetch(url, {
+    const r = await authFetch(url, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(body),
