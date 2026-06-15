@@ -420,6 +420,38 @@ async def version():
     }
 
 
+@app.get("/api/br1/direct-credentials")
+async def br1_direct_credentials():
+    """Hand the authenticated app the BR1's OAuth client-credentials so it
+    can talk DIRECTLY to the router on its LAN — no server, no SpeedFusion
+    tunnel in the path.
+
+    This is the ONE endpoint that deliberately discloses the BR1's
+    client_id/client_secret to a client; everywhere else secrets are
+    redacted (see `_SECRET_KEYS`). It's gated by the same bearer token as
+    the rest of /api/*, and the payload only crosses the operator's own
+    network. The app caches the result in the iOS Keychain so that when the
+    tunnel later drops — exactly when you need to manage the BR1 — the
+    credentials are already on the phone and direct control just works.
+
+    Source of truth: NETMON_BR1_OAUTH_CLIENT_ID / _SECRET in the server's
+    .env (the same values the server's own MANGA controller authenticates
+    with). Host comes from the `br1` device config when present, else the
+    Peplink LAN default.
+    """
+    client_id = os.environ.get("NETMON_BR1_OAUTH_CLIENT_ID", "")
+    client_secret = os.environ.get("NETMON_BR1_OAUTH_CLIENT_SECRET", "")
+    if not client_id or not client_secret:
+        raise HTTPException(
+            404,
+            "BR1 OAuth credentials are not configured on the server "
+            "(set NETMON_BR1_OAUTH_CLIENT_ID / NETMON_BR1_OAUTH_CLIENT_SECRET in .env)",
+        )
+    br1 = (config.get("devices", {}) or {}).get("br1") or {}
+    host = br1.get("host") or os.environ.get("NETMON_BR1_HOST") or "192.168.50.1"
+    return {"host": host, "client_id": client_id, "client_secret": client_secret}
+
+
 @app.get("/api/health")
 async def health():
     """Unauthenticated liveness probe for watchdog scripts.
