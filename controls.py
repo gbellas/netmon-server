@@ -139,8 +139,10 @@ class PeplinkController:
         Radio must be on (Wi-Fi WAN enabled) or the list is empty."""
         token = await self._ensure_oauth_token()
         s = await self._get_session()
+        # infoType=config returns signal/channel/security AND the saved-profile
+        # flag (config.profileId) so a saved hotspot re-joins without a password.
         url = (f"{self.base_url}/api/cmd.wifi.scan"
-               f"?connId={conn_id}&infoType=status&accessToken={token}")
+               f"?connId={conn_id}&infoType=config&accessToken={token}")
         r = await s.get(url)
         r.raise_for_status()
         d = await r.json()
