@@ -132,6 +132,37 @@ class PeplinkController:
         r.raise_for_status()
         return await r.json()
 
+    async def scan_wifi(self, conn_id: int) -> list:
+        """Site survey on the Wi-Fi WAN `conn_id` via the OAuth'd
+        /api/cmd.wifi.scan command. Returns the raw list of nearby APs
+        (ssid/bssid/signalLevel/signalStrength/channel/securityPolicy/...).
+        Radio must be on (Wi-Fi WAN enabled) or the list is empty."""
+        token = await self._ensure_oauth_token()
+        s = await self._get_session()
+        url = (f"{self.base_url}/api/cmd.wifi.scan"
+               f"?connId={conn_id}&infoType=status&accessToken={token}")
+        r = await s.get(url)
+        r.raise_for_status()
+        d = await r.json()
+        resp = d.get("response")
+        return resp if isinstance(resp, list) else []
+
+    async def join_wifi(self, conn_id: int, ssid: str,
+                        security: str, password: str) -> dict:
+        """Join (or save+join) an SSID on the Wi-Fi WAN via the OAuth'd
+        /api/cmd.wifi.connect command. Empty `password` for a network
+        already saved on the router (uses the stored key)."""
+        token = await self._ensure_oauth_token()
+        s = await self._get_session()
+        policy = {"type": security or "WPA/WPA2-Personal"}
+        if password:
+            policy["detail"] = {"key": password}
+        body = {"connId": conn_id, "ssid": ssid, "security": {"policy": policy}}
+        url = f"{self.base_url}/api/cmd.wifi.connect?accessToken={token}"
+        r = await s.post(url, json=body)
+        r.raise_for_status()
+        return await r.json()
+
     async def set_wan_enable(self, wan_id: int, enable: bool) -> dict:
         """Enable or disable a WAN connection on the Peplink.
 

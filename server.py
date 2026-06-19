@@ -1352,6 +1352,13 @@ class _DeviceSfEnableBody(BaseModel):
     profile_id: int = 1
 
 
+class _DeviceWifiJoinBody(BaseModel):
+    connId:   int
+    ssid:     str
+    security: str = ""
+    password: str = ""
+
+
 def _require_peplink_driver(dev_id: str):
     """Look up the running driver and confirm it's a peplink_router. Raises
     404 if no driver is registered, 501 if the kind is unsupported."""
@@ -1379,6 +1386,32 @@ async def device_control_carrier(dev_id: str, body: _DeviceCarrierBody):
         f"carrier → {body.carrier}"
     )
     return {"ok": True, "carrier": body.carrier, "result": res}
+
+
+@app.post("/api/devices/{dev_id}/control/wifi_scan")
+async def device_control_wifi_scan(dev_id: str, connId: int):
+    """Run a Wi-Fi WAN site survey and return flat `<dev>.wifi_scan.*`
+    state (same shape the app's direct client produces). `connId` is the
+    Wi-Fi WAN connection id (3 = 2.4 GHz, 4 = 5 GHz on BR1 Pro 5G)."""
+    driver = _require_peplink_driver(dev_id)
+    try:
+        return await driver.scan_wifi(connId)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post("/api/devices/{dev_id}/control/wifi_join")
+async def device_control_wifi_join(dev_id: str, body: _DeviceWifiJoinBody):
+    """Join (or save+join) an SSID on the device's Wi-Fi WAN."""
+    driver = _require_peplink_driver(dev_id)
+    try:
+        res = await driver.join_wifi(
+            body.connId, body.ssid, body.security, body.password
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    logger.info(f"device {dev_id!r} wifi join → {body.ssid!r}")
+    return {"ok": True, "ssid": body.ssid, "result": res}
 
 
 @app.post("/api/devices/{dev_id}/control/rat")

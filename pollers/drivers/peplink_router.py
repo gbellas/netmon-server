@@ -54,6 +54,41 @@ def _make_controller(spec: DeviceSpec) -> Any:
     )
 
 
+def _map_wifi_scan(nets: list, prefix: str) -> dict:
+    """Map a cmd.wifi.scan response list into flat `<prefix>.wifi_scan.*`
+    state keys, deduped by SSID (strongest signal wins) and sorted by
+    signal descending. Mirrors BR1DirectClient.mapWifiScan in the app so
+    the direct and server paths produce identical state."""
+    best: dict = {}
+    for n in nets or []:
+        ssid = n.get("ssid")
+        if not ssid:
+            continue
+        lvl = int(n.get("signalLevel", 0) or 0)
+        if lvl <= best.get(ssid, {}).get("_lvl", -1):
+            continue
+        ch = int(n.get("channel", 0) or 0)
+        best[ssid] = {
+            "ssid": ssid,
+            "signal_level": lvl,
+            "channel": ch,
+            "band": "5GHz" if ch >= 36 else "2.4GHz",
+            "security": n.get("securityPolicy", "open"),
+            "signal_dbm": n.get("signalStrength"),
+            "saved": (n.get("config") or {}).get("profileId") is not None,
+            "connected": bool((n.get("status") or {}).get("connected", False)),
+            "_lvl": lvl,
+        }
+    ordered = sorted(best.values(), key=lambda e: e["_lvl"], reverse=True)
+    out: dict = {f"{prefix}.wifi_scan.count": len(ordered)}
+    for i, e in enumerate(ordered):
+        for k, v in e.items():
+            if k == "_lvl" or v is None:
+                continue
+            out[f"{prefix}.wifi_scan.{i}.{k}"] = v
+    return out
+
+
 class PeplinkRouterDriver:
     kind = "peplink_router"
 
@@ -219,6 +254,19 @@ class PeplinkRouterDriver:
         existing flows naturally re-route before we disrupt it."""
         ctrl = self._get_controller()
         return await ctrl.set_wan_priority(int(wan_index), int(priority))
+
+    async def scan_wifi(self, conn_id: int) -> dict:
+        """Run a Wi-Fi WAN site survey on `conn_id` (3 = 2.4 GHz, 4 = 5 GHz
+        on BR1 Pro 5G) and return flat `<id>.wifi_scan.*` state keys."""
+        ctrl = self._get_controller()
+        nets = await ctrl.scan_wifi(conn_id)
+        return _map_wifi_scan(nets, self.spec.id)
+
+    async def join_wifi(self, conn_id: int, ssid: str,
+                       security: str, password: str) -> dict:
+        """Join (or save+join) an SSID on the Wi-Fi WAN `conn_id`."""
+        ctrl = self._get_controller()
+        return await ctrl.join_wifi(conn_id, ssid, security, password)
 
     async def set_carrier(self, carrier: str) -> dict:
         """Switch RoamLink eSIM carrier and force an immediate re-register.
