@@ -108,23 +108,44 @@ class BasePoller:
 
     async def run(self):
         self.logger.info(f"Poller started (interval={self.poll_interval}s)")
+        idle = False
         while True:
             try:
                 # Idle back-off: if we opt in AND no clients have been connected
-                # for a while, poll much less frequently. CRITICAL: the sleep
-                # must be interruptible so that when a client reconnects, we
-                # resume polling within ~5s — not after the full idle_interval.
-                if self.pause_when_idle and hasattr(self.ws, "is_idle") \
-                   and self.ws.is_idle(self.idle_threshold_sec):
-                    await self._interruptible_sleep(self.idle_interval_sec)
-                    continue
+                # for a while, poll much less frequently — but DO still poll.
+                # Skipping poll() entirely froze state indefinitely while the
+                # app kept rendering it as live: a BR1 that had been tethered
+                # for 25 minutes still read "Scanning...". A stale value shown
+                # as current is worse than the bandwidth the skip saved.
+                # CRITICAL: the sleep must be interruptible so that when a
+                # client reconnects, we resume polling within ~5s — not after
+                # the full idle_interval.
+                was_idle = idle
+                idle = bool(
+                    self.pause_when_idle
+                    and hasattr(self.ws, "is_idle")
+                    and self.ws.is_idle(self.idle_threshold_sec)
+                )
+                if idle != was_idle:
+                    self.logger.info(
+                        f"Idle — backing off to {self.idle_interval_sec:.0f}s"
+                        if idle else
+                        f"Client connected — resuming {self.poll_interval}s polling"
+                    )
 
                 updates = await self.poll()
                 was_unreachable = self._consecutive_failures >= 3
                 self._consecutive_failures = 0
                 self._last_success_at = time.time()
                 self._last_error = ""
-                changed = self.state.update(updates)
+                # Freshness marker. Lets a client tell live data from the
+                # cached snapshot it is served on connect, and makes a wedged
+                # poller visible as a timestamp that stops advancing. Merged
+                # rather than mutated so poll() may return a shared dict.
+                changed = self.state.update({
+                    **updates,
+                    f"{self.name}.last_polled_at": self._last_success_at,
+                })
                 if changed:
                     await self.ws.broadcast(changed)
                 if was_unreachable:
@@ -163,4 +184,6 @@ class BasePoller:
 
             # Interruptible retry-sleep too, so a just-reconnected client sees
             # a poll attempt quickly even if the poller was in a backoff window.
-            await self._interruptible_sleep(self._current_interval())
+            await self._interruptible_sleep(
+                self.idle_interval_sec if idle else self._current_interval()
+            )
